@@ -1,0 +1,154 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 698bb84bd4d29584f8e56784390f3b9d, type: 3}
+  m_Name: Fish_squid
+  m_EditorClassIdentifier: FishingV2::Fishing.V2.FishSpeciesAsset
+  Data:
+    SpeciesId: squid
+    DisplayName: "\uC624\uC9D5\uC5B4"
+    PathType: 2
+    BaseScore: 5
+    Zone: {x: 0.2, y: 0.8}
+    VisualDepth:
+      Min: 0.28
+      Max: 0.6
+    SpawnCount:
+      Min: 1
+      Max: 2
+    SizeCm:
+      Min: 15
+      Max: 25
+    StartleRadius: 1.2
+    StartleDuration: 0.8
+    CuriosityPerSecond: 0.063
+    LureChance: 0.3
+    MinNoticeRadius: 0
+    NoticeRadius: 2.6
+    ApproachSpeed: 1.5
+    BiteWindow: 1.5
+    TurnRateDeg: 95
+    RespawnDelay: 15
+    Lane:
+      Speed: 1.2
+      Amplitude: 0.6
+      Period: 8
+    Loop:
+      A: 4
+      B: 2.5
+      Period: 10
+      DriftSpeed: 0.2
+    HoverDash:
+      HoverTime:
+        Min: 1.6
+        Max: 3.4
+      DashDuration: 0.58
+      DashDistance:
+        Min: 1.8
+        Max: 2.9
+      HomeRadius: 3
+      DriftSpeed: 0.2
+      MinTurnRadiusBodyLengths: 0.85
+    ApproachPlan:
+    - Style: 3
+      HasUntil: 1
+      UntilDistance: 1.7
+    - Style: 5
+      HasUntil: 0
+      UntilDistance: 0
+    School:
+      Enabled: 0
+      GroupSize:
+        Min: 2
+        Max: 3
+      FormationRadius: 0.95
+      SoloChance: 1
+      GapMultiplier: 1.25
+    Visual:
+      Length: 1.05
+      MaxWidth: 0.13
+      MaxHeight: 0.108
+      WidthProfile:
+      - {x: 0, y: 0}
+      - {x: 0.07, y: 0.28}
+      - {x: 0.2, y: 0.58}
+      - {x: 0.38, y: 0.86}
+      - {x: 0.56, y: 1}
+      - {x: 0.72, y: 0.99}
+      - {x: 0.88, y: 0.93}
+      - {x: 1, y: 0.82}
+      HeightProfile:
+      - {x: 0, y: 0}
+      - {x: 0.07, y: 0.3}
+      - {x: 0.2, y: 0.58}
+      - {x: 0.38, y: 0.84}
+      - {x: 0.56, y: 1}
+      - {x: 0.72, y: 0.97}
+      - {x: 0.88, y: 0.89}
+      - {x: 1, y: 0.76}
+      Tail:
+        Length: 0.16
+        Spread: 0.16
+        Notch: 0.15
+        Cant: 0.05
+      Pectoral:
+        U0: 0.1
+        U1: 0.56
+        Length: 0.15
+        Sweep: 0.05
+        Segments: 12
+      Dorsal:
+        U0: 0.32
+        U1: 0.72
+        Height: 0.018
+      Eye:
+        U: 0.84
+        Spread: 0.7
+        Radius: 0.038
+        RingScale: 1.24
+      Arms:
+        Count: 8
+        Length: 0.4
+        Spread: 0.4
+        Width: 0.026
+        Segments: 7
+      Finlets:
+        Count: 4
+        U0: 0.66
+        U1: 0.88
+        Length: 0.02
+      Stripes:
+        Count: 0
+        U0: 0
+        U1: 0
+        Amount: 0.3
+        Width: 0.6
+      Spots: 1
+      BaseColor: {r: 0.8, g: 0.66, b: 0.62, a: 1}
+      EdgeColor: {r: 0.99, g: 0.96, b: 0.92, a: 1}
+      FinColor: {r: 0.74, g: 0.58, b: 0.56, a: 1}
+      FinletColor: {r: 0.74, g: 0.58, b: 0.56, a: 1}
+      WaveAmplitude: 0.55
+      WaveFrequency: 0.9
+      WaveLag: 3.4
+      WaveExponent: 1
+      WaveHinge: 0.95
+      WaveSpread: 5.4
+      FinRipple: 0.02
+      FinWave: 11
+      FinRate: 4.2
+      ArmDrift: 0.105
+      ArmSpring: 26
+      ArmDamping: 5.4
+      ArmGain: 1.5
+      ArmForwardGain: 0.16
+      ArcBody: 0.22
+      Bank: 0.1

@@ -1,0 +1,16 @@
+# Unity generated state belongs to the canonical child project
+FishingGame/Library/
+FishingGame/Temp/
+FishingGame/Logs/
+FishingGame/UserSettings/
+FishingGame/obj/
+FishingGame/.vs/
+
+# Local build outputs are reproducible from the project
+FishingGame/Builds/
+
+# Temporary source/API stubs used only for local validation
+TempCompile/
+
+# Reversible quarantine created while removing the accidental outer Unity project
+_recovery_accidental-root-unity_20260901/

@@ -1,0 +1,1275 @@
+<title>입질 벤치</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* ── 단일 테마 확정: 밝은 수면을 띄우기 위한 어두운 계측기 크롬 ────────── */
+:root{
+  --ink:#e6edf0;
+  --ink-dim:#8ea3ac;
+  --ink-faint:#5c7079;
+  --bg:#0e1418;
+  --panel:#151d22;
+  --panel-2:#1b252b;
+  --line:#26333a;
+  --line-soft:#1e2a30;
+  --accent:#e8a33d;
+  --accent-dim:#8a6423;
+  --good:#5fbf8f;
+  --warn:#d9695e;
+  --r:6px;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans KR",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--sans);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 20px 56px}
+
+/* ── 헤더 ────────────────────────────────────────────────────────── */
+header{
+  display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid var(--line);
+}
+h1{
+  margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em;
+}
+.sub{color:var(--ink-dim);font-size:13px}
+.ver{
+  margin-left:auto;font-family:var(--mono);font-size:11px;
+  color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase;
+}
+
+/* ── 본체 그리드 ──────────────────────────────────────────────────── */
+.bench{display:grid;grid-template-columns:1fr 216px;gap:16px;align-items:start}
+@media(max-width:900px){.bench{grid-template-columns:1fr}}
+
+.stage{display:flex;flex-direction:column;gap:10px;min-width:0}
+
+/* 상태 레일 */
+.rail{
+  display:flex;align-items:center;gap:14px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  padding:9px 13px;
+}
+.clock{font-family:var(--mono);font-size:19px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.clock.low{color:var(--accent)}
+.bar{flex:1;height:5px;background:var(--line);border-radius:3px;overflow:hidden;min-width:60px}
+.bar i{display:block;height:100%;background:var(--accent);width:100%;transition:width .12s linear}
+.rail .score{font-family:var(--mono);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;min-width:34px;text-align:right}
+.rail .lbl{font-size:11px;color:var(--ink-faint);letter-spacing:.08em;text-transform:uppercase}
+
+/* 캔버스 */
+.pond{position:relative;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#3fb3c4;line-height:0}
+canvas{display:block;width:100%;height:auto;touch-action:manipulation;cursor:crosshair}
+.hint{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  background:rgba(14,20,24,.86);color:var(--ink);border:1px solid var(--line);
+  padding:12px 18px;border-radius:var(--r);font-size:13px;text-align:center;
+  pointer-events:none;line-height:1.6;
+}
+.hint b{color:var(--accent);font-weight:600}
+.hint.gone{display:none}
+
+/* 결과 오버레이 */
+.result{
+  position:absolute;inset:0;background:rgba(14,20,24,.93);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  padding:20px;
+}
+.result.gone{display:none}
+.result h2{margin:0;font-size:15px;font-weight:600;letter-spacing:.04em;color:var(--ink-dim)}
+.result .big{font-family:var(--mono);font-size:44px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.result table{
+  flex:none;border-collapse:collapse;border-spacing:0;line-height:1.9;
+  font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+}
+.result td{padding:1px 14px;border-bottom:1px solid var(--line-soft);white-space:nowrap}
+.result tr:last-child td{border-bottom:none}
+.result .big,.result h2,.result button{flex:none}
+.result td:first-child{font-family:var(--sans);color:var(--ink-dim)}
+.result td:last-child{text-align:right}
+
+/* 집계 패널 */
+.side{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.card h3{
+  margin:0 0 9px;font-size:10.5px;font-weight:600;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--ink-faint);
+}
+.tally{display:flex;flex-direction:column;gap:1px}
+.trow{display:flex;align-items:center;gap:9px;padding:5px 0;border-bottom:1px solid var(--line-soft)}
+.trow:last-child{border-bottom:none}
+.trow.hit{animation:pop .45s ease-out}
+@keyframes pop{
+  0%{background:rgba(232,163,61,.34)}
+  100%{background:transparent}
+}
+.trow.hit .tnum{animation:num .45s ease-out}
+@keyframes num{0%{transform:scale(1.5);color:var(--accent)}100%{transform:scale(1)}}
+.tnum{display:inline-block;transition:none}
+.swatch{width:22px;height:11px;border-radius:6px;flex:none;border:1px solid rgba(0,0,0,.35)}
+.tname{flex:1;font-size:12.5px}
+.tpt{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint)}
+.tnum{font-family:var(--mono);font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;min-width:22px;text-align:right}
+.tnum.zero{color:var(--ink-faint);font-weight:400}
+
+/* 세션 기록 */
+.hist{display:flex;flex-direction:column;gap:3px;font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums}
+.hrow{display:flex;align-items:center;gap:8px;color:var(--ink-dim)}
+.hbar{flex:1;height:9px;background:var(--line-soft);border-radius:2px;overflow:hidden}
+.hbar i{display:block;height:100%;background:var(--accent-dim)}
+.hrow b{color:var(--ink);font-weight:500;min-width:24px;text-align:right}
+.hempty{color:var(--ink-faint);font-size:12px;font-family:var(--sans)}
+.hstat{margin-top:8px;padding-top:8px;border-top:1px solid var(--line-soft);font-family:var(--mono);font-size:11px;color:var(--ink-dim);display:flex;justify-content:space-between}
+
+/* 버튼 */
+.btns{display:flex;gap:7px}
+button{
+  font-family:var(--sans);font-size:12.5px;color:var(--ink);
+  background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);
+  padding:7px 13px;cursor:pointer;transition:background .12s,border-color .12s;
+}
+button:hover{background:#233038;border-color:#33444d}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:#20160a;border-color:var(--accent);font-weight:600}
+button.primary:hover{background:#f2b355;border-color:#f2b355}
+button.wide{flex:1}
+
+/* ── 튜닝 서랍 ───────────────────────────────────────────────────── */
+.drawer{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+.dhead{
+  display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;
+  user-select:none;
+}
+.dhead:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.dhead h3{margin:0;font-size:11px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-dim)}
+.dhead .caret{margin-left:auto;color:var(--ink-faint);font-family:var(--mono);font-size:11px}
+.dbody{padding:0 14px 16px;border-top:1px solid var(--line-soft)}
+.dbody[hidden]{display:none}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 22px;padding-top:14px}
+@media(max-width:760px){.grid3{grid-template-columns:1fr}}
+.grp h4{
+  margin:0 0 9px;font-size:10.5px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-faint);
+}
+.sl{margin-bottom:11px}
+.sl .top{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;margin-bottom:3px}
+.sl .val{font-family:var(--mono);font-size:11.5px;color:var(--accent);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);height:16px;cursor:pointer}
+input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ck{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px;cursor:pointer}
+.ck input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;flex:none}
+.ck span{color:var(--ink-dim)}
+.ck input:checked+span{color:var(--ink)}
+.note{font-size:11.5px;color:var(--ink-faint);line-height:1.55;margin-top:9px}
+
+.legend{
+  margin-top:16px;padding:13px 15px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r);
+  font-size:12.5px;color:var(--ink-dim);line-height:1.75;
+}
+.legend b{color:var(--ink);font-weight:600}
+.legend .k{font-family:var(--mono);font-size:11.5px;color:var(--accent)}
+
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>입질 벤치</h1>
+    <span class="sub">배치 중심 방치 루프 · 수치 튜닝 검증</span>
+    <span class="ver">기획서 v0.3 §7</span>
+  </header>
+
+  <div class="bench">
+    <div class="stage">
+      <div class="rail">
+        <span class="clock" id="clock">1:30</span>
+        <span class="bar"><i id="bar"></i></span>
+        <span class="lbl">점수</span>
+        <span class="score" id="score">0</span>
+      </div>
+
+      <div class="pond">
+        <canvas id="cv"></canvas>
+        <div class="hint" id="hint">
+          수면을 눌러 <b>찌</b>를 던지세요<br>
+          입질하면 <b>자동으로 잡힙니다</b> — 탭하면 더 빨리
+        </div>
+        <div class="result gone" id="result">
+          <h2 id="rTitle">세션 종료</h2>
+          <div class="big" id="rScore">0</div>
+          <table id="rTable"></table>
+          <button class="primary" id="rAgain">다시 (R)</button>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button id="btnStart" class="primary wide">세션 시작</button>
+        <button id="btnPause">일시정지</button>
+        <button id="btnClear">기록 지우기</button>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <h3>이번 세션</h3>
+        <div class="tally" id="tally"></div>
+      </div>
+      <div class="card">
+        <h3>세션 기록</h3>
+        <div class="hist" id="hist"><span class="hempty">아직 없음</span></div>
+        <div class="hstat" id="hstat" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer">
+    <div class="dhead" id="dhead" role="button" tabindex="0" aria-expanded="true" aria-controls="dbody">
+      <h3>튜닝</h3>
+      <span class="caret" id="caret">닫기 −</span>
+    </div>
+    <div class="dbody" id="dbody">
+      <div class="grid3">
+
+        <div class="grp">
+          <h4>밸런스</h4>
+          <div class="sl">
+            <div class="top"><label for="s1">호기심 배율</label><span class="val" id="v1">1.00</span></div>
+            <input type="range" id="s1" min="0.2" max="3" step="0.05" value="1">
+          </div>
+          <div class="sl">
+            <div class="top"><label for="s2">접근 속도 배율</label><span class="val" id="v2">1.00</span></div>
+            <input type="range" id="s2" min="0.4" max="2.5" step="0.05" value="1">
+          </div>
+          <div class="sl">
+            <div class="top"><label for="s3">입질 윈도우 배율</label><span class="val" id="v3">1.00</span></div>
+            <input type="range" id="s3" min="0.3" max="3" step="0.05" value="1">
+          </div>
+          <div class="sl">
+            <div class="top"><label for="s5">선회율 배율</label><span class="val" id="v5">1.00</span></div>
+            <input type="range" id="s5" min="0.3" max="4" step="0.05" value="1">
+          </div>
+          <div class="sl">
+            <div class="top"><label for="s4">세션 길이</label><span class="val" id="v4">90초</span></div>
+            <input type="range" id="s4" min="30" max="180" step="10" value="90">
+          </div>
+          <p class="note">목표 성과: 8~15마리, 대물 0~2마리. 안 맞으면 <b>호기심 배율</b>부터.<br>
+          <b>선회율</b>을 4배로 올리면 예전의 '제자리 회전'에 가까워지고, 0.3배로 내리면 대형기처럼 크게 돕니다.</p>
+        </div>
+
+        <div class="grp">
+          <h4>관심 신호</h4>
+          <label class="ck"><input type="checkbox" id="c0" checked><span>발견 동작 (멈칫 → 방향 전환)</span></label>
+          <label class="ck"><input type="checkbox" id="c1" checked><span>속도 상승 (2배 이상)</span></label>
+          <label class="ck"><input type="checkbox" id="c2" checked><span>직선 이동 (흔들림 정지)</span></label>
+          <label class="ck"><input type="checkbox" id="c3" checked><span>꼬리 비트 증가</span></label>
+          <label class="ck"><input type="checkbox" id="c4" checked><span>뱅킹 제거</span></label>
+          <label class="ck"><input type="checkbox" id="c5" checked><span>물살 트레일</span></label>
+          <p class="note">하나씩 꺼보면서 <b>어느 신호가 실제로 일하는지</b> 확인하세요. <b>발견 동작</b>을 끄면 "패턴대로 가다가 튼다"가 사라집니다.</p>
+        </div>
+
+        <div class="grp">
+          <h4>회수</h4>
+          <label class="ck"><input type="checkbox" id="a1" checked><span><b>자동 회수</b> — 입질 시간이 끝나면 잡힘</span></label>
+          <p class="note" style="margin:6px 0 10px">끄면 예전처럼 <b>탭해야만</b> 잡힙니다. 켜두면 손을 안 대도 돌아가고, 탭은 최대 1.5초를 앞당기는 <b>효율</b>이 됩니다.</p>
+          <h4>선별 회수 <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint)">(해금 요소)</span></h4>
+          <label class="ck"><input type="checkbox" id="r1"><span>초록 잡어 놓아주기</span></label>
+          <label class="ck"><input type="checkbox" id="r2"><span>파란 소어 놓아주기</span></label>
+          <label class="ck"><input type="checkbox" id="r3"><span>복어 놓아주기</span></label>
+          <label class="ck"><input type="checkbox" id="r4"><span>분홍 대물 놓아주기</span></label>
+          <p class="note">놓아준 물고기는 <b>조용히</b> 떠나서 찌가 그대로 있습니다. 잡으면 걷어올렸다 다시 던지므로 <b>큰 물장구</b>가 일고 대물이 돌아갑니다.<br>잡어·소어를 놓아주면 그게 곧 <b>노림 플레이</b>입니다.</p>
+          <h4 style="margin-top:14px">입질 신호</h4>
+          <label class="ck"><input type="checkbox" id="b1" checked><span>남은 시간 링</span></label>
+          <label class="ck"><input type="checkbox" id="b2"><span>느낌표</span></label>
+          <h4 style="margin-top:14px">착수 · 획득</h4>
+          <label class="ck"><input type="checkbox" id="b3" checked><span><b>유인</b> — 착수하면 중거리 물고기가 다가옴</span></label>
+          <label class="ck"><input type="checkbox" id="b4" checked><span><b>획득 연출</b> — 솟아올라 바구니로</span></label>
+          <p class="note">유인을 끄면 착수 시 <b>전부 도망만</b> 갑니다 — 조작에 대한 응답이 없어져서 첫 박자가 죽습니다. 대물은 유인 계수가 0이라 물장구에 안 옵니다.</p>
+          <h4 style="margin-top:14px">보조 표시 <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint)">(게임엔 없음)</span></h4>
+          <label class="ck"><input type="checkbox" id="d1"><span>관심선</span></label>
+          <label class="ck"><input type="checkbox" id="d2"><span>놀람 반경</span></label>
+          <label class="ck"><input type="checkbox" id="d3"><span>인지 반경 (대물)</span></label>
+          <label class="ck"><input type="checkbox" id="d4"><span>궤도 자취</span></label>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <b>조작</b> — 수면 탭: 찌 던지기 / 옮기기(＝재착수, 큰 놀람 + 관심 전원 리셋) · 입질 중 탭 또는 <span class="k">Space</span>: 즉시 회수(안 해도 자동으로 잡힘) · <span class="k">R</span>: 재시작 · <span class="k">P</span>: 일시정지<br>
+    <b>보는 법</b> — 궤도를 돌던 물고기가 찌를 발견하면 <b>멈칫하고 머리를 돌린 뒤</b> 직선으로 옵니다. 도착했는데 이미 다른 놈이 물고 있으면 <b>흥미를 잃고 궤도로 돌아갑니다</b>. 잡으면 찌를 걷어올렸다 다시 던지므로 <b>큰 물장구가 일어 대물이 돌아갑니다</b>. <b>선별 회수</b>로 놓아준 물고기는 조용히 지나가고 대물은 계속 옵니다 — 유일한 조작인 <b>찌 배치</b>가 여기서 갈립니다. 번잡한 자리는 많이·작게, 조용한 자리는 적게·크게.
+  </div>
+</div>
+
+<script>
+/* ═══ 상수 · 스펙 (기획서 v0.3 §7) ══════════════════════════════════ */
+const W=16, H=9;
+
+const SPECIES={
+  perch:{
+    key:'perch', name:'초록 잡어', path:'lane', score:1,
+    speed:1.2, laneAmp:0.6, lanePeriod:4,
+    band:[0.05,0.95], count:[4,6],
+    startleR:1.5, startleT:0.4, curiosity:0.050, lureP:0.45, approach:2.5, biteWin:1.2,
+    len:0.92, ratio:3.0, full:0.80, tailLen:0.23, tailW:0.95, tailLag:0.05, turn:200,
+    waveAmp:1.0, waveFreq:1.0,
+    body:'#7f9d43', belly:'#c2cd85', fin:'#e2853c', dot:'#4e6a25'
+  },
+  sardine:{
+    key:'sardine', name:'파란 소어', path:'school', score:2,
+    speed:1.6, laneAmp:0.45, lanePeriod:3.4, schoolN:[5,8], schoolR:1.2,
+    band:[0.05,0.45], count:[1,1],
+    startleR:2.0, startleT:0.6, curiosity:0.039, lureP:0.38, approach:3.0, biteWin:1.0,
+    len:0.55, ratio:6.0, full:0.70, tailLen:0.20, tailW:0.85, tailLag:0.03, turn:280,
+    waveAmp:0.6, waveFreq:1.8,
+    body:'#3d76bd', belly:'#cfe0ee', fin:'#e8cf5e', dot:'#24507f'
+  },
+  puffer:{
+    key:'puffer', name:'복어', path:'hover', score:5,
+    hoverT:[2,4], dashT:0.4, dashDist:[1.5,2.5], homeR:3.0, respawn:15,
+    band:[0.2,0.8], count:[1,2],
+    startleR:1.2, startleT:0.8, curiosity:0.063, lureP:0.30, approach:1.5, biteWin:1.5,
+    len:1.0, ratio:1.2, full:0.36, tailLen:0.13, tailW:0.5, tailLag:0.05, turn:95,
+    waveAmp:0.1, waveFreq:0.6,
+    body:'#bb8b53', belly:'#dcc294', fin:'#e0c07e', dot:'#8a5f2e'
+  },
+  trophy:{
+    key:'trophy', name:'분홍 대물', path:'loop', score:30,
+    loopA:4.0, loopB:2.5, loopPeriod:10,
+    band:[0.5,0.95], count:[1,1], spawnChance:1.0, respawn:25,
+    startleR:3.0, startleT:1.2, curiosity:0.063, lureP:0.0, approach:0.5, biteWin:0.6, minNoticeR:3.2,
+    len:1.70, ratio:2.5, full:0.62, tailLen:0.25, tailW:0.95, tailLag:0.15, turn:85,
+    waveAmp:1.4, waveFreq:0.7,
+    body:'#e8756e', belly:'#f7c3bd', fin:'#f09a94', dot:'#c04f49'
+  }
+};
+const ORDER=['perch','sardine','puffer','trophy'];
+
+/* Interested 상태 배율 */
+const I_SPEED=1.0, I_WAVE_F=1.8, I_WAVE_A=1.3;
+
+/* ═══ 튜닝 상태 ═══════════════════════════════════════════════════ */
+const T={cur:1, app:1, win:1, dur:90, turnBoost:1, autoReel:1, lure:1, lureP:1, catchFx:1,
+         release:{perch:0,sardine:0,puffer:0,trophy:0},
+         notice:1, iSpeed:1, iStraight:1, iTail:1, iNoBank:1, iTrail:1,
+         bRing:1, bMark:0,
+         dLine:0, dStartle:0, dNotice:0, dPath:0};
+
+/* ═══ 유틸 ════════════════════════════════════════════════════════ */
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const rndi=(a,b)=>Math.floor(rnd(a,b+1));
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const TAU=Math.PI*2;
+function angLerp(a,b,t){let d=((b-a+Math.PI)%TAU+TAU)%TAU-Math.PI;return a+d*t}
+
+const DEG=Math.PI/180;
+
+/* 선회 — 각도를 목표로 '보간'하지 않고 초당 최대 선회율로 깎아 돌린다.
+   그리고 이동은 항상 현재 머리 방향으로만 한다(전진 전용).
+   위치와 회전을 따로 굴리면 속도가 0에 가까울 때 제자리에서 빙글 도는 그림이 나온다. */
+function steer(f,targetAng,dt,omegaDeg){
+  let d=((targetAng-f.ang+Math.PI)%TAU+TAU)%TAU-Math.PI;
+  const max=omegaDeg*DEG*dt;
+  const step=clamp(d,-max,max);
+  f.ang+=step;
+  return step/Math.max(dt,1e-4);          // 실제 선회 각속도 (뱅킹용)
+}
+function advance(f,speed,dt){             // 머리 방향으로만 전진
+  f.x+=Math.cos(f.ang)*speed*dt;
+  f.y+=Math.sin(f.ang)*speed*dt;
+}
+
+const NOTICE_T=0.30;   // 발견 동작 길이
+const NOTICE_MUL=1.9;  // 인지 반경 = 놀람 반경 × 이 값. 낮출수록 찌 위치 선택이 중요해진다
+
+/* 히트 슬롯 점유 — 온 방향 그대로 찌 앞에 멈춰서 문다 */
+function takeBite(f,dx,dy,d){
+  const sp=SPECIES[f.sp], u=d||1;
+  hitSlot=f; f.state='bite';
+  f.win=sp.biteWin*T.win; f.winMax=f.win;
+  const back=0.16+sp.len*0.52;               // 큰 물고기일수록 뒤에서 문다 (찌를 안 가리게)
+  f.bitePos=[bob.x-dx/u*back, bob.y-dy/u*back];
+  bob.ripples.push({r:0.1,a:1,max:1.2});   // 입질 물보라
+}
+
+/* 궤도 복귀 — 텔레포트 대신 현재 위치를 오프셋으로 흡수해 부드럽게 돌아온다 */
+function returnToRoam(f,cool){
+  const sp=SPECIES[f.sp];
+  if(sp.path==='hover'){f.hx=f.x;f.hy=f.y;f.dash=null;f.hover=rnd(sp.hoverT[0],sp.hoverT[1]);}
+  else{
+    let px,py;
+    if(f.fo){
+      // 무리 추종 개체는 자기 경로 파라미터를 안 쓴다. 그걸 기준으로 오프셋을 잡으면
+      // 수십 유닛짜리 오프셋이 생겨 다음 프레임에 화면 밖으로 날아간다.
+      const lead=fish.find(o=>o.leader&&o.sp===f.sp);
+      if(lead){px=lead.x+f.fo[0];py=lead.y+f.fo[1]}else{px=f.x;py=f.y}
+    }else{const p=evalPath(f,f.t);px=p[0];py=p[1]}
+    f.offx=f.x-px; f.offy=f.y-py;
+    const m=Math.hypot(f.offx,f.offy);
+    if(m>3.5){f.offx*=3.5/m;f.offy*=3.5/m}
+  }
+  f.state='roam'; f.cool=Math.max(f.cool||0,cool); f.trail=[];
+  f.bitePos=null; f.noticeT=0; f.interT=0; f.biteAng=undefined;
+}
+
+/* ═══ 궤도 평가 — 순수 함수 (기획서 §4) ════════════════════════════ */
+function evalPath(f,t){
+  const sp=SPECIES[f.sp];
+  if(sp.path==='lane'||sp.path==='school'){
+    const d=f.lane;
+    const along=d.speed*t;
+    const lat=d.amp*Math.sin(TAU*t/d.period+d.phase);
+    return [d.ox+d.dx*along+(-d.dy)*lat, d.oy+d.dy*along+d.dx*lat];
+  }
+  if(sp.path==='loop'){
+    const w=TAU/sp.loopPeriod;
+    return [f.cx+sp.loopA*Math.cos(w*t+f.phase0), f.cy+sp.loopB*Math.sin(2*(w*t+f.phase0))];
+  }
+  return [f.hx,f.hy]; // hover는 자체 상태로 이동
+}
+
+/* ═══ 물고기 ═══════════════════════════════════════════════════════ */
+let fish=[], nextId=1, rocks=[], weeds=[];
+
+function makeFish(key){
+  const sp=SPECIES[key];
+  const f={id:nextId++, sp:key, state:'roam', t:rnd(0,50),
+    x:0,y:0,px:0,py:0, ang:rnd(0,TAU), tailAng:rnd(0,TAU),
+    phase:rnd(0,TAU), offx:0, offy:0, stun:0, cool:0, curT:rnd(0,1),
+    bank:1, trail:[], hist:[], sizeScale:rnd(0.92,1.08), speedNow:0};
+
+  const band=sp.band;
+  if(sp.path==='lane'||sp.path==='school'){
+    const dir=Math.random()<0.5?1:-1;
+    const a=rnd(-0.35,0.35);
+    f.lane={dx:Math.cos(a)*dir, dy:Math.sin(a)*dir, speed:sp.speed,
+      amp:sp.laneAmp, period:sp.lanePeriod, phase:rnd(0,TAU),
+      ox:rnd(1,W-1), oy:rnd(band[0]*H,band[1]*H)};
+    // t 를 랜덤하게 주면 안 된다. 경로가 origin + dir*speed*t 라서
+    // t=20 이면 스폰 순간 이미 24유닛 진행한 화면 밖 위치에 나타난다.
+    // 개체 간 변화는 ox/oy 와 사인 위상이 이미 담당한다.
+    f.t=0;
+  }else if(sp.path==='loop'){
+    f.cx=W/2+rnd(-1.2,1.2); f.cy=rnd(band[0]*H,band[1]*H)*0.5+H*0.62; f.phase0=rnd(0,TAU);
+    f.cy=clamp(f.cy,sp.loopB+0.6,H-sp.loopB-0.6);
+    f.cx=clamp(f.cx,sp.loopA*0.55+0.6,W-sp.loopA*0.55-0.6);
+  }else{
+    const r=rocks.length?rocks[rndi(0,rocks.length-1)]:{x:W*0.25,y:H*0.5};
+    f.hx=r.x+rnd(-0.6,0.6); f.hy=r.y+rnd(-0.6,0.6);
+    f.homeX=f.hx; f.homeY=f.hy;
+    f.hover=rnd(sp.hoverT[0],sp.hoverT[1]); f.dash=null;
+  }
+  const p=evalPath(f,f.t); f.x=p[0]; f.y=p[1]; f.px=f.x; f.py=f.y;
+  return f;
+}
+
+function spawnSchool(){
+  const sp=SPECIES.sardine, n=rndi(sp.schoolN[0],sp.schoolN[1]);
+  const leader=makeFish('sardine'); leader.leader=true; fish.push(leader);
+  for(let i=1;i<n;i++){
+    const m=makeFish('sardine');
+    m.lane=leader.lane; m.t=leader.t;
+    const ang=rnd(0,TAU), rr=rnd(0.25,sp.schoolR);
+    m.fo=[Math.cos(ang)*rr, Math.sin(ang)*rr*0.65];
+    m.noise=[rnd(0,TAU),rnd(0,TAU)];
+    fish.push(m);
+  }
+}
+
+function population(){
+  const c={perch:0,sardine:0,puffer:0,trophy:0};
+  fish.forEach(f=>c[f.sp]++);
+  return c;
+}
+
+function topUp(){
+  const c=population();
+  const wantP=rndi(SPECIES.perch.count[0],SPECIES.perch.count[1]);
+  while(c.perch<wantP){fish.push(makeFish('perch'));c.perch++}
+  if(c.sardine===0) spawnSchool();
+  const wantF=rndi(SPECIES.puffer.count[0],SPECIES.puffer.count[1]);
+  if(c.puffer<wantF && now>=pufferReady){
+    fish.push(makeFish('puffer')); pufferReady=now+SPECIES.puffer.respawn;
+  }
+}
+
+/* ═══ 찌 ══════════════════════════════════════════════════════════ */
+const bob={active:false,x:0,y:0,phase:'idle',timer:0,dip:0,ripples:[],lastCast:-99};
+
+function cast(x,y,big){
+  bob.x=clamp(x,0.5,W-0.5); bob.y=clamp(y,0.5,H-0.5);
+  bob.active=true; bob.phase='water';
+  // 연속 재착수 페널티 — 지속시간이 주로 받고, 반경은 1.35배까지만
+  const spam=(now-bob.lastCast<3)?(bob.penalty||0)+1:0;
+  bob.penalty=spam; bob.lastCast=now;
+  const timeMul=Math.min(2.5,1+spam*0.5);
+  const radMul=Math.min(1.35,1+spam*0.12);
+  bob.ripples.push({r:0,a:1,max:1.6});
+  el.hint.classList.add('gone');
+  // 찌를 걷어올렸다 다시 던지면 그 찌를 향하던 관심은 거리와 무관하게 전부 사라진다.
+  // (§1-3 "잡어를 잡을수록 대물이 멀어진다"를 실제로 성립시키는 지점)
+  fish.forEach(f=>{ if(f.state==='interested'||f.state==='notice') returnToRoam(f,1.2); });
+  startle(bob.x,bob.y,radMul,timeMul,false);
+  lure(bob.x,bob.y,radMul);
+}
+
+/* 놀람 — 반경 배율과 지속 배율을 분리한다.
+   연속 재착수 페널티가 반경까지 2.5배로 키우면 대물 반경이 7.5유닛(연못 폭의 절반)이 되어
+   물고기가 화면 밖으로 날아간다. 페널티는 지속시간이 주로 받고, 반경은 살짝만. */
+function startle(x,y,radMul,timeMul,reset){
+  fish.forEach(f=>{
+    const sp=SPECIES[f.sp];
+    const dx=f.x-x, dy=f.y-y, d=Math.hypot(dx,dy);
+    const R=sp.startleR*radMul;
+    if(d<R && d>0.001){
+      if(f.state==='bite') return;
+      if(reset && f.state!=='roam') returnToRoam(f,0.35);
+      const k=1-d/R;
+      f.offx+=dx/d*k*sp.startleR*0.45;
+      f.offy+=dy/d*k*sp.startleR*0.45;
+      const m=Math.hypot(f.offx,f.offy), cap=sp.startleR*0.85;   // 누적 상한 — 이게 없으면 날아간다
+      if(m>cap){f.offx*=cap/m; f.offy*=cap/m}
+      f.stun=Math.max(f.stun, sp.startleT*timeMul);
+      f.cool=Math.max(f.cool, sp.startleT*timeMul*0.8);
+    }
+  });
+}
+
+/* 유인 — 착수한 물장구는 '전부 도망'이 아니다.
+   코앞의 물고기는 놀라 물러나지만, 중거리의 물고기는 오히려 무슨 일인가 보러 온다.
+   찌를 놓자마자 몇 마리가 방향을 트는 게 보여야 조작에 대한 응답이 생긴다.
+   단 유인 계수는 어종마다 다르다 — 대물은 0이다. 물장구를 싫어한다.
+   덕분에 "작은 놈은 물장구에 몰리고, 대물은 조용해져야 온다"가 규칙으로 선다. */
+function lure(x,y,radMul){
+  if(!T.lure) return;
+  const gap=now-(bob.lastLure||-99);
+  const fatigue=clamp(gap/2.5,0.55,1);   // 2.5초면 완전 회복, 연속이면 55%까지
+  bob.lastLure=now;
+  const pull=f=>{ f.trail=[]; f.interT=0; f.cool=0; f.stun=0;
+    if(T.notice){f.state='notice';f.noticeT=NOTICE_T}else{f.state='interested'} };
+  const eligible=[];
+  fish.forEach(f=>{
+    const sp=SPECIES[f.sp];
+    if(f.state!=='roam' || !sp.lureP) return;
+    const d=Math.hypot(f.x-x,f.y-y);
+    if(d < sp.startleR*radMul) return;                 // 놀람 반경 안 → 이미 물러났다
+    if(d >= sp.startleR*NOTICE_MUL) return;            // 인지 반경 밖 → 못 봤다
+    if(d < (sp.minNoticeR||0)) return;
+    eligible.push({f,d});
+    if(Math.random() < sp.lureP*T.lureP*fatigue) pull(f);
+  });
+  // 한 마리도 안 걸리면 가장 가까운 놈을 끌어온다.
+  // 조작에 대한 응답이 확률이면, 아무 반응 없는 착수가 생기고 그게 곧 '먹통'으로 읽힌다.
+  if(eligible.length && fatigue>0.6 && !eligible.some(o=>o.f.state!=='roam')){
+    eligible.sort((a,b)=>a.d-b.d); pull(eligible[0].f);
+  }
+}
+
+/* ═══ 세션 ════════════════════════════════════════════════════════ */
+let now=0, running=false, paused=false, tLeft=90, pufferReady=0;
+let caught={perch:0,sardine:0,puffer:0,trophy:0};
+let score=0, hitSlot=null, trophyTimer=0, history=[];
+
+function reset(){
+  fish=[]; rocks=[]; weeds=[]; now=0;
+  for(let i=0;i<4;i++) rocks.push({x:rnd(1.5,W-1.5),y:rnd(1,H-1),r:rnd(0.22,0.42)});
+  for(let i=0;i<6;i++) weeds.push({x:rnd(0.8,W-0.8),y:rnd(0.8,H-0.8),s:rnd(0.7,1.2),p:rnd(0,TAU)});
+  topUp();
+  if(Math.random()<SPECIES.trophy.spawnChance) fish.push(makeFish('trophy'));
+  trophyTimer=0; pufferReady=0;
+  caught={perch:0,sardine:0,puffer:0,trophy:0};
+  score=0; hitSlot=null;
+  flyers=[];
+  bob.lastLure=-99;
+  bob.active=false; bob.ripples=[]; bob.lastCast=-99; bob.penalty=0;
+  tLeft=T.dur; running=true; paused=false;
+  el.result.classList.add('gone');
+  el.hint.classList.remove('gone');
+  el.btnStart.textContent='재시작';
+  drawTally();
+}
+
+function endSession(){
+  running=false;
+  const total=ORDER.reduce((s,k)=>s+caught[k],0);
+  history.unshift({score,total,c:{...caught}});
+  if(history.length>10) history.pop();
+  el.rScore.textContent=score;
+  el.rTitle.textContent=`${total}마리 · ${T.dur}초`;
+  el.rTable.innerHTML=ORDER.map(k=>
+    `<tr><td>${SPECIES[k].name}</td><td>${caught[k]} × ${SPECIES[k].score}</td><td>${caught[k]*SPECIES[k].score}</td></tr>`
+  ).join('');
+  el.hint.classList.add('gone');
+  el.result.classList.remove('gone');
+  drawHist();
+}
+
+/* ═══ 업데이트 ════════════════════════════════════════════════════ */
+function update(dt){
+  now+=dt;
+  if(running){
+    tLeft-=dt;
+    if(tLeft<=0){tLeft=0;endSession()}
+  }
+
+  // 획득 연출 — ① 수면 위로 끌어올림 ② 바구니로 포물선 비행 ③ 입고
+  for(let i=flyers.length-1;i>=0;i--){
+    const fl=flyers[i]; fl.t+=dt;
+    const T1=0.30, T2=0.55;
+    if(fl.t<T1){
+      const u=fl.t/T1;
+      fl.lift=u*u*(3-2*u);                 // 물 밖으로 솟는 구간
+      fl.x=fl.x0; fl.y=fl.y0-fl.lift*0.35;
+    }else{
+      const u=clamp((fl.t-T1)/T2,0,1), e=u*u*(3-2*u);
+      fl.lift=1; fl.fly=u;
+      fl.x=fl.x0+(fl.tx-fl.x0)*e;
+      fl.y=(fl.y0-0.35)+(fl.ty-(fl.y0-0.35))*e-Math.sin(u*Math.PI)*1.7;   // 포물선
+      if(u>=1){
+        caught[fl.sp]++; score+=SPECIES[fl.sp].score;
+        drawTally(); pulseRow(fl.sp);
+        flyers.splice(i,1);
+      }
+    }
+  }
+
+  // 찌 상태
+  if(bob.phase==='reel'){bob.timer-=dt;if(bob.timer<=0){bob.phase='casting';bob.timer=0.3}}
+  else if(bob.phase==='casting'){bob.timer-=dt;if(bob.timer<=0){cast(bob.x,bob.y,true)}}
+  bob.ripples.forEach(r=>{r.r+=dt*2.2;r.a-=dt*0.75});
+  bob.ripples=bob.ripples.filter(r=>r.a>0);
+  bob.dip+=((hitSlot?1:0)-bob.dip)*Math.min(1,dt*9);
+
+  // 대물 재스폰
+  if(running && !fish.some(f=>f.sp==='trophy')){
+    trophyTimer+=dt;
+    if(trophyTimer>=SPECIES.trophy.respawn){fish.push(makeFish('trophy'));trophyTimer=0}
+  }
+
+  for(let i=fish.length-1;i>=0;i--){
+    const f=fish[i], sp=SPECIES[f.sp];
+    f.px=f.x; f.py=f.y;
+    if(f.stun>0) f.stun-=dt;
+    if(f.cool>0) f.cool-=dt;
+
+    if(f.state==='roam'){
+      f.t+=dt;
+      if(sp.path==='hover') updateHover(f,dt);
+      let p=evalPath(f,f.t);
+      if(f.fo){ // 무리 개체
+        const lead=fish.find(o=>o.leader&&o.sp===f.sp);
+        if(lead){
+          const a=Math.atan2(lead.y-lead.py,lead.x-lead.px)||0;
+          const ca=Math.cos(a),sa=Math.sin(a);
+          const nx=Math.sin(now*0.7+f.noise[0])*0.12, ny=Math.sin(now*0.9+f.noise[1])*0.12;
+          p=[lead.x+f.fo[0]*ca-f.fo[1]*sa+nx, lead.y+f.fo[0]*sa+f.fo[1]*ca+ny];
+        }else{
+          // 리더 소멸 → 현재 위치에서 단독 개체로 전환. 이걸 안 하면 자기 경로 파라미터가
+          // 이미 멀리 진행돼 있어서 화면 밖으로 순간이동한다.
+          f.fo=null; f.leader=true; f.t=0;
+          f.lane=Object.assign({},f.lane,{ox:f.x,oy:f.y});
+          p=[f.x,f.y];
+        }
+      }
+      f.x=p[0]+f.offx; f.y=p[1]+f.offy;
+      const k=Math.pow(0.06,dt); f.offx*=k; f.offy*=k;
+      const om=Math.hypot(f.offx,f.offy);            // 오프셋 상한 (범용 안전장치)
+      if(om>3.5){f.offx*=3.5/om; f.offy*=3.5/om}
+
+      // 화면 밖 랩 — 목표 좌표를 직접 지정한다(누적 가산 금지).
+      // ox 에 폭을 계속 더하는 방식은 한 프레임에 여러 번 발동하면 물고기를 멀리 날려버린다.
+      if((sp.path==='lane'||sp.path==='school') && !f.fo){
+        const px=f.x-f.offx, py=f.y-f.offy;      // 경로상의 순수 위치
+        let nx=px, ny=py, moved=false;
+        if(px<-1.8){nx=W+1.5;moved=true} else if(px>W+1.8){nx=-1.5;moved=true}
+        if(py<-1.8){ny=H+1.5;moved=true} else if(py>H+1.8){ny=-1.5;moved=true}
+        if(moved){ f.lane.ox+=nx-px; f.lane.oy+=ny-py; f.x=nx+f.offx; f.y=ny+f.offy; }
+      }
+      // 안전망 — 어떤 경로로든 크게 벗어나면 경로 자체를 현재 위치에 다시 앵커한다
+      if(f.x<-3.5||f.x>W+3.5||f.y<-3.5||f.y>H+3.5){
+        const nx=clamp(f.x,0.6,W-0.6), ny=clamp(f.y,0.6,H-0.6);
+        f.offx=0; f.offy=0; f.x=nx; f.y=ny;
+        if(sp.path==='lane'||sp.path==='school'){
+          f.fo=null; f.leader=true; f.t=0;
+          f.lane=Object.assign({},f.lane,{ox:nx,oy:ny});
+        }else if(sp.path==='hover'){
+          f.hx=nx; f.hy=ny; f.homeX=nx; f.homeY=ny; f.dash=null;
+        }else if(sp.path==='loop'){
+          f.cx=clamp(f.cx,sp.loopA*0.55+0.6,W-sp.loopA*0.55-0.6);
+          f.cy=clamp(f.cy,sp.loopB+0.6,H-sp.loopB-0.6);
+        }
+      }
+
+      // 호기심 판정
+      if(bob.active&&bob.phase==='water'&&f.stun<=0&&f.cool<=0&&running){
+        const nr=sp.startleR*NOTICE_MUL;
+        f.curT-=dt;
+        if(f.curT<=0){
+          f.curT=1;
+          const d=Math.hypot(f.x-bob.x,f.y-bob.y);
+          // 경계심 높은 어종은 코앞에서 갑자기 관심을 갖지 않는다. 멀리서 알아채고 들어온다.
+          if(d<nr && d>=(sp.minNoticeR||0) && Math.random()<sp.curiosity*T.cur){
+            f.trail=[];
+            f.interT=0;
+            if(T.notice){f.state='notice';f.noticeT=NOTICE_T}else{f.state='interested'}
+          }
+        }
+      }
+    }
+    else if(f.state==='notice'){
+      /* 발견 동작 — 궤도를 멈추고, 살짝 움찔한 뒤, 머리를 찌 쪽으로 홱 돌린다.
+         "패턴대로 가다가 발견하면 동작이 변한다"를 만드는 0.3초. */
+      if(!bob.active||bob.phase!=='water'){returnToRoam(f,0.6);continue}
+      f.noticeT-=dt;
+      const dx=bob.x-f.x, dy=bob.y-f.y;
+      // 급감속하면서 머리를 홱 튼다. 멈추는 게 아니라 '미끄러지며 꺾는' 동작이라
+      // 제자리 회전으로 안 보인다. 감속 자체가 발견의 신호.
+      f.steerRate=steer(f,Math.atan2(dy,dx),dt,sp.turn*T.turnBoost*3);
+      advance(f,sp.approach*T.app*0.35,dt);
+      if(f.noticeT<=0) f.state='interested';
+    }
+    else if(f.state==='interested'){
+      if(!bob.active||bob.phase!=='water'){returnToRoam(f,0.6);continue}
+      const dx=bob.x-f.x, dy=bob.y-f.y, d=Math.hypot(dx,dy);
+      if(d<0.5){
+        // 도착. 자리가 비어 있으면 물고, 차 있으면 흥미를 잃고 궤도로 돌아간다.
+        // (줄 서서 기다리게 하면 화면만 어지럽고 플레이어 판단에 보태는 게 없다)
+        if(!hitSlot) takeBite(f,dx,dy,d); else returnToRoam(f,3.0);
+        continue;
+      }
+      const spd=sp.approach*T.app*(T.iSpeed?1:0.45);
+      let desired=Math.atan2(dy,dx);
+      // 직선 이동 OFF면 접근 중에도 배회처럼 흔들리게 — 대비가 사라진다
+      if(!T.iStraight) desired+=Math.sin(now*2.6+f.phase)*0.55;
+      // 가까워질수록 더 급하게 돈다(먹이를 낚아채는 동작). 선회 반경 때문에
+      // 목표를 영원히 맴도는 미사일 문제를 막는 장치이기도 하다.
+      const boost=1+clamp((1.6-d)/1.6,0,1)*1.6;
+      f.steerRate=steer(f,desired,dt,sp.turn*T.turnBoost*boost);
+      advance(f,spd,dt);
+      f.interT=(f.interT||0)+dt;
+      if(f.interT>20){returnToRoam(f,3.0);continue}   // 안전장치: 영원히 못 닿으면 포기
+      if(T.iTrail){f.trail.push([f.x,f.y]);if(f.trail.length>16)f.trail.shift()}
+    }
+    else if(f.state==='bite'){
+      f.x+=(f.bitePos[0]-f.x)*Math.min(1,dt*9);
+      f.y+=(f.bitePos[1]-f.y)*Math.min(1,dt*9);
+      f.win-=dt;
+      if(f.win<=0){
+        if(T.autoReel && !T.release[f.sp]){
+          catchFish(f);                    // 자동 회수 → 걷어올림 = 큰 소란
+        }else{
+          hitSlot=null;                    // 놓아줌(선별) 또는 수동 모드에서 무시
+          returnToRoam(f,2.2);
+          startle(f.x,f.y,0.5,0.5,false);  // 작은 소란. 찌는 그 자리에 유지
+        }
+      }
+    }
+
+    // 각도 · 뱅킹 · 파동
+    const vx=f.x-f.px, vy=f.y-f.py, v=Math.hypot(vx,vy)/Math.max(dt,1e-4);
+    f.speedNow=v;
+    // 회전
+    // notice / interested 는 위에서 steer() 로 이미 돌렸다(전진 선회).
+    // roam 은 경로가 위치를 결정하므로 머리는 실제 진행 방향을 따라가되 선회율로 제한한다.
+    // bite 는 물고 있는 상태라 방향을 바꾸지 않고 좌우로 파닥이기만 한다.
+    if(f.state==='roam'){
+      if(sp.path==='hover'){ /* updateHover 가 이미 조향함 */ }
+      else if(v>0.02) f.steerRate=steer(f,Math.atan2(vy,vx),dt,sp.turn*T.turnBoost*2.5);
+      else f.steerRate=0;
+    }else if(f.state==='bite'){
+      const base=f.biteAng!==undefined?f.biteAng:(f.biteAng=f.ang);
+      f.ang=base+Math.sin(now*13)*0.20;      // 몸부림 (회전 아님)
+      f.steerRate=0;
+    }
+    f.turnRate=f.steerRate||0;
+    const inter=(f.state==='interested');
+    const targetBank=(inter&&T.iNoBank)?1:(1-Math.min(0.24,Math.abs(f.turnRate)*0.10));
+    f.bank+=(targetBank-f.bank)*Math.min(1,dt*6);
+    let fMul=1;
+    if(f.state==='bite') fMul=3.2;                       // 물고 파닥임
+    else if(f.state==='notice') fMul=0.22;               // 발견 = 얼어붙음
+    else if(inter&&T.iTail) fMul=I_WAVE_F;
+    f.phase+=dt*sp.waveFreq*fMul*(0.9+Math.min(1.4,v*0.5))*5.2;
+    f.tailAng=angLerp(f.tailAng,f.ang,Math.min(1,dt/Math.max(sp.tailLag,0.016)));
+
+    if(T.dPath&&f.state==='roam'){f.hist.push([f.x,f.y]);if(f.hist.length>150)f.hist.shift()}
+    else if(!T.dPath) f.hist.length=0;
+    if(!T.iTrail||f.state==='roam') f.trail.length=0;
+  }
+  if(running) topUp();
+}
+
+function updateHover(f,dt){
+  const sp=SPECIES[f.sp];
+  if(f.dash){
+    // 돌진은 '머리 방향으로만'. 목표 좌표로 보간하면 몸이 옆으로 미끄러진다.
+    f.dash.t+=dt;
+    const u=clamp(f.dash.t/sp.dashT,0,1);
+    const spd=f.dash.len*3*Math.pow(1-u,2)/sp.dashT;    // ease-out 속도 곡선
+    f.hx+=Math.cos(f.ang)*spd*dt; f.hy+=Math.sin(f.ang)*spd*dt;
+    if(u>=1){f.dash=null; f.aim=null; f.hover=rnd(sp.hoverT[0],sp.hoverT[1])}
+  }else{
+    f.hover-=dt;
+    // 부유하는 동안 다음 돌진 방향으로 천천히 몸을 튼다.
+    // 돌진 순간에 방향을 정하면 최대 180도를 즉시 돌아야 해서 제자리 회전이 된다.
+    if(f.aim==null){
+      f.aim = (Math.hypot(f.hx-f.homeX,f.hy-f.homeY)>sp.homeR*0.7)
+        ? Math.atan2(f.homeY-f.hy,f.homeX-f.hx)          // 집에서 멀어졌으면 돌아가는 쪽
+        : f.ang+rnd(-1.2,1.2);                            // 아니면 ±70도 안에서
+    }
+    f.steerRate=steer(f,f.aim,dt,sp.turn*T.turnBoost*0.7);
+    f.hx+=Math.cos(f.ang)*0.07*dt; f.hy+=Math.sin(f.ang)*0.07*dt;
+    if(f.hover<=0) f.dash={t:0,len:rnd(sp.dashDist[0],sp.dashDist[1])};
+  }
+  f.hx=clamp(f.hx,0.6,W-0.6); f.hy=clamp(f.hy,0.6,H-0.6);
+}
+
+/* ═══ 회수 ════════════════════════════════════════════════════════ */
+let flyers=[];   // 잡혀서 바구니로 날아가는 중인 물고기
+
+function catchFish(f){
+  const sp=SPECIES[f.sp];
+  // 집계는 '바구니에 들어간 순간' 올린다. 비행이 곧 보상 연출이라 결과가 따라와야 한다.
+  if(T.catchFx){
+    flyers.push({sp:f.sp, x0:f.x, y0:f.y, x:f.x, y:f.y, ang:f.ang, phase:f.phase,
+      size:f.sizeScale, t:0, lift:0, fly:0,
+      tx:W+0.9, ty:1.0+ORDER.indexOf(f.sp)*2.0});
+    bob.ripples.push({r:0.05,a:1,max:1.4});
+  }else{ caught[f.sp]++; score+=sp.score; drawTally(); }
+  fish.splice(fish.indexOf(f),1);
+  if(f.leader){ // 리더가 잡히면 남은 개체 하나를 승격 (무리가 통째로 사라지지 않게)
+    const rest=fish.filter(o=>o.sp==='sardine');
+    if(rest.length){const n=rest[0];n.leader=true;n.fo=null;n.lane=f.lane;n.t=f.t;}
+  }
+  hitSlot=null;
+  bob.phase='reel'; bob.timer=0.3;   // 걷어올렸다 재착수 = 큰 소란
+}
+/* 탭 = 즉시 회수. 안 해도 입질 시간이 끝나면 자동으로 잡히므로 '의무'가 아니라 '효율'이다. */
+function reel(){ if(hitSlot&&running) catchFish(hitSlot); }
+
+/* ═══ 렌더 ════════════════════════════════════════════════════════ */
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+let S=1, DPR=1;
+
+function resize(){
+  const w=cv.parentElement.clientWidth;
+  const h=Math.round(w*H/W);
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  cv.width=w*DPR; cv.height=h*DPR; cv.style.height=h+'px';
+  S=w/W;
+}
+window.addEventListener('resize',resize);
+
+function profile(u,full){
+  const a=Math.sin(Math.PI*(0.16+0.79*clamp(u,0,1)));
+  return Math.pow(Math.max(a,0.02),full);
+}
+const WAVE_K=0.40;   // 스펙의 상대값(1.0/0.6/0.1/1.4)을 실제 몸폭 대비로 환산
+function lateralAt(u,f,ampMul){
+  const sp=SPECIES[f.sp];
+  return sp.waveAmp*WAVE_K*ampMul*u*u*Math.sin(f.phase-u*2.4);
+}
+
+function bodyPath(L,Wd,f,ampMul,grow){
+  const sp=SPECIES[f.sp], N=16, top=[], bot=[];
+  for(let i=0;i<=N;i++){
+    const u=-0.08+(1.08)*i/N;
+    const x=L*(0.42-u*0.78);
+    const lat=lateralAt(Math.max(u,0),f,ampMul)*Wd;
+    const hw=Wd*0.5*profile(u,sp.full)*grow;
+    top.push([x,lat-hw]); bot.push([x,lat+hw]);
+  }
+  ctx.beginPath();
+  ctx.moveTo(top[0][0],top[0][1]);
+  for(let i=1;i<top.length;i++) ctx.lineTo(top[i][0],top[i][1]);
+  for(let i=bot.length-1;i>=0;i--) ctx.lineTo(bot[i][0],bot[i][1]);
+  ctx.closePath();
+  return {tailX:L*(0.42-0.78), tailY:lateralAt(1,f,ampMul)*Wd, halfW:Wd*0.5*profile(1,sp.full)};
+}
+
+function drawTail(L,Wd,f,ampMul,base,grow){
+  const sp=SPECIES[f.sp];
+  const swing=lateralAt(1,f,ampMul);
+  const lagA=((f.ang-f.tailAng+Math.PI)%TAU+TAU)%TAU-Math.PI;
+  const a=Math.atan2(swing*1.6,1.1)+clamp(lagA*1.6,-0.7,0.7);
+  const tl=L*sp.tailLen, tw=Wd*sp.tailW*0.5*grow;
+  ctx.save();
+  ctx.translate(base.tailX,base.tailY);
+  ctx.rotate(a);
+  ctx.beginPath();
+  ctx.moveTo(0.02*L,-base.halfW*0.85);
+  ctx.lineTo(-tl,-tw);
+  ctx.quadraticCurveTo(-tl*0.55,0,-tl,tw);
+  ctx.lineTo(0.02*L,base.halfW*0.85);
+  ctx.closePath();
+  ctx.restore();
+}
+
+/* 물고기 한 마리를 현재 트랜스폼에 그린다. 헤엄치는 개체와 잡혀서 날아가는 개체가
+   같은 코드를 쓰도록 분리 — 따로 두면 한쪽에만 눈·무늬가 빠지는 식으로 어긋난다. */
+function paintFish(f,L,Wd,ampMul){
+  const sp=SPECIES[f.sp];
+  const b=bodyPath(L,Wd,f,ampMul,1);
+  // 지느러미 (머리 쪽)
+  ctx.fillStyle=sp.fin;
+  const fu=0.30, fx=L*(0.42-fu*0.78), fl=lateralAt(fu,f,ampMul)*Wd, fh=Wd*0.5*profile(fu,sp.full);
+  [-1,1].forEach(s=>{
+    ctx.save(); ctx.translate(fx,fl+fh*s*0.78); ctx.rotate(s*0.5+Math.sin(f.phase*1.1)*0.14*s);
+    ctx.beginPath(); ctx.ellipse(-L*0.045,0,L*0.085,Wd*0.15,0,0,TAU); ctx.fill(); ctx.restore();
+  });
+  // 꼬리
+  drawTail(L,Wd,f,ampMul,b,1); ctx.fillStyle=sp.fin; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.42)'; ctx.lineWidth=Math.max(1,S*0.016); ctx.stroke();
+  // 몸통
+  bodyPath(L,Wd,f,ampMul,1);
+  const g=ctx.createLinearGradient(0,-Wd*0.5,0,Wd*0.5);
+  g.addColorStop(0,sp.body); g.addColorStop(0.5,sp.belly); g.addColorStop(1,sp.body);
+  ctx.fillStyle=g; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.lineWidth=Math.max(1,S*0.018); ctx.stroke();
+  // 무늬
+  ctx.save(); ctx.clip(); ctx.fillStyle=sp.dot;
+  if(f.sp==='perch'||f.sp==='puffer'){
+    for(let i=0;i<9;i++){
+      const u=0.12+0.78*((i*0.37)%1);
+      const px=L*(0.42-u*0.78), py=lateralAt(u,f,ampMul)*Wd+Math.sin(i*2.7)*Wd*0.26;
+      ctx.beginPath(); ctx.ellipse(px,py,L*0.028,L*0.024,0,0,TAU); ctx.fill();
+    }
+  }else if(f.sp==='sardine'||f.sp==='trophy'){
+    ctx.globalAlpha=0.5; ctx.beginPath();
+    for(let i=0;i<=12;i++){
+      const u=i/12, px=L*(0.42-u*0.78), py=lateralAt(u,f,ampMul)*Wd;
+      i?ctx.lineTo(px,py):ctx.moveTo(px,py);
+    }
+    ctx.strokeStyle=sp.dot; ctx.lineWidth=Wd*0.11; ctx.stroke();
+  }
+  ctx.restore();
+  // 눈 — 양쪽, 동공은 바깥쪽
+  const eu=0.10, ex=L*(0.42-eu*0.78), el_=lateralAt(eu,f,ampMul)*Wd, eh=Wd*0.5*profile(eu,sp.full);
+  const er=Math.max(1.5,Wd*0.17);
+  [-1,1].forEach(s=>{
+    ctx.beginPath(); ctx.arc(ex,el_+eh*s*0.62,er,0,TAU);
+    ctx.fillStyle='#fff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(ex+er*0.1,el_+eh*s*0.62+er*0.34*s,er*0.55,0,TAU);
+    ctx.fillStyle='#16202a'; ctx.fill();
+  });
+}
+
+function drawFish(f){
+  const sp=SPECIES[f.sp];
+  const inter=(f.state==='interested');
+  let ampMul=1;
+  if(f.state==='bite') ampMul=1.8;
+  else if(f.state==='notice') ampMul=0.3;
+  else if(inter&&T.iTail) ampMul=I_WAVE_A;
+  const L=sp.len*f.sizeScale*S, Wd=L/sp.ratio;
+  const x=f.x*S, y=f.y*S;
+
+  // 트레일
+  if(T.iTrail&&f.trail.length>2){
+    ctx.beginPath();
+    ctx.moveTo(f.trail[0][0]*S,f.trail[0][1]*S);
+    for(let i=1;i<f.trail.length;i++) ctx.lineTo(f.trail[i][0]*S,f.trail[i][1]*S);
+    ctx.strokeStyle='rgba(255,255,255,.34)';
+    ctx.lineWidth=Math.max(1.4,Wd*0.28); ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.stroke();
+  }
+  // 궤도 자취
+  if(T.dPath&&f.hist.length>2){
+    ctx.beginPath();
+    ctx.moveTo(f.hist[0][0]*S,f.hist[0][1]*S);
+    for(let i=1;i<f.hist.length;i++) ctx.lineTo(f.hist[i][0]*S,f.hist[i][1]*S);
+    ctx.strokeStyle='rgba(255,255,255,.20)'; ctx.lineWidth=1; ctx.stroke();
+  }
+  // 관심선 (보조)
+  if(T.dLine&&(inter||f.state==='notice')&&bob.active){
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(bob.x*S,bob.y*S);
+    ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.setLineDash([5,5]); ctx.lineWidth=1.3;
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // 그림자 — 탑다운 필수 (기획서 §6-4). 구역이 아래일수록 멀고 흐리게
+  const depth=clamp(f.y/H,0,1);
+  const off=(5+depth*13)*(S/72);
+  ctx.save();
+  ctx.translate(x+off*0.8,y+off*1.3); ctx.rotate(f.ang); ctx.scale(1,f.bank);
+  ctx.globalAlpha=0.30-depth*0.10;
+  ctx.fillStyle='#0a3844';
+  const sb=bodyPath(L,Wd,f,ampMul,1.05); ctx.fill();
+  drawTail(L,Wd,f,ampMul,sb,1.05); ctx.fill();
+  ctx.restore();
+
+  // 본체
+  ctx.save();
+  ctx.translate(x,y); ctx.rotate(f.ang); ctx.scale(1,f.bank);
+  paintFish(f,L,Wd,ampMul);
+  ctx.restore();
+}
+
+function drawFlyers(){
+  flyers.forEach(fl=>{
+    const sp=SPECIES[fl.sp];
+    const scale=(1+fl.lift*0.20)*(1-fl.fly*0.66);
+    const L=sp.len*fl.size*S*scale, Wd=L/sp.ratio;
+    const x=fl.x*S, y=fl.y*S;
+    const alpha=1-Math.max(0,(fl.fly-0.75)/0.25);
+    const stub={sp:fl.sp,phase:fl.phase,ang:0,tailAng:0,state:'roam'};
+
+    // 그림자는 수면에 남는다 → 솟아오를수록 아래로 멀어지고 흐려진다
+    const sep=(6+fl.lift*26+fl.fly*30)*(S/72);
+    ctx.save();
+    ctx.translate(x+sep*0.5,y+sep); ctx.rotate(fl.ang);
+    ctx.globalAlpha=(0.28-fl.fly*0.22)*alpha; ctx.fillStyle='#0a3844';
+    const sb=bodyPath(L,Wd,stub,1,1); ctx.fill();
+    drawTail(L,Wd,stub,1,sb,1); ctx.fill();
+    ctx.restore();
+
+    // 몸통 — 헤엄칠 때와 같은 렌더를 쓴다
+    ctx.save();
+    ctx.translate(x,y); ctx.rotate(fl.ang-fl.fly*0.5+Math.sin(fl.fly*8)*0.09*(1-fl.fly));
+    ctx.globalAlpha=alpha;
+    paintFish(stub,L,Wd,1);
+    ctx.globalAlpha=alpha*0.40*(1-fl.fly); ctx.fillStyle='#ffffff';   // 젖은 반짝임
+    ctx.beginPath(); ctx.ellipse(L*0.05,-Wd*0.22,L*0.18,Wd*0.12,0,0,TAU); ctx.fill();
+    ctx.restore();
+
+    // 솟아오르는 구간의 물보라
+    if(fl.lift<1){
+      ctx.save(); ctx.globalAlpha=(1-fl.lift)*0.75;
+      ctx.strokeStyle='#ffffff'; ctx.lineWidth=Math.max(1.5,S*0.022);
+      for(let k=0;k<7;k++){
+        const a=k/7*TAU+fl.phase, r0=S*0.10, r1=S*(0.16+fl.lift*0.42);
+        ctx.beginPath();
+        ctx.moveTo(fl.x0*S+Math.cos(a)*r0, fl.y0*S+Math.sin(a)*r0*0.6);
+        ctx.lineTo(fl.x0*S+Math.cos(a)*r1, fl.y0*S+Math.sin(a)*r1*0.6);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  });
+}
+
+function drawBobber(){
+  if(!bob.active) return;
+  const x=bob.x*S, y=bob.y*S;
+  bob.ripples.forEach(r=>{
+    ctx.beginPath(); ctx.arc(x,y,r.r*S,0,TAU);
+    ctx.strokeStyle=`rgba(255,255,255,${r.a*0.55})`; ctx.lineWidth=Math.max(1,S*0.02); ctx.stroke();
+  });
+  if(bob.phase!=='water') return;
+  const dip=bob.dip;
+  for(let i=0;i<3;i++){
+    const rr=(0.16+i*0.11+Math.sin(now*2.2-i*0.8)*0.02+dip*0.1)*S;
+    ctx.beginPath(); ctx.arc(x,y,rr,0,TAU);
+    ctx.strokeStyle=`rgba(255,255,255,${(0.30-i*0.08)*(1+dip)})`; ctx.lineWidth=Math.max(1,S*0.016); ctx.stroke();
+  }
+  // 입질 창 — 남은 시간을 줄어드는 링으로. 어종별 윈도우 차이가 눈으로 보인다.
+  if(hitSlot&&T.bRing){
+    const frac=clamp(hitSlot.win/hitSlot.winMax,0,1), rr=S*0.40;
+    ctx.beginPath(); ctx.arc(x,y,rr,0,TAU);
+    ctx.strokeStyle='rgba(0,0,0,.28)'; ctx.lineWidth=Math.max(3,S*0.055); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x,y,rr,-Math.PI/2,-Math.PI/2+TAU*frac);
+    ctx.strokeStyle=frac<0.35?'#ff7a5e':'#ffd07a';
+    ctx.lineWidth=Math.max(3,S*0.055); ctx.lineCap='round'; ctx.stroke();
+  }
+
+  const bx=x+Math.sin(now*17)*dip*S*0.022, by=y+dip*S*0.05;
+  const r=S*0.115*(1-dip*0.34);
+  ctx.beginPath(); ctx.arc(bx,by,r,0,TAU);
+  ctx.fillStyle='#e8a33d'; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.lineWidth=Math.max(1,S*0.02); ctx.stroke();
+  ctx.beginPath(); ctx.arc(bx,by,r*0.52,0,TAU);
+  ctx.fillStyle='#f6e4c3'; ctx.fill();
+
+  // 느낌표 — 입질은 '정보'가 아니라 0.6~1.2초짜리 입력 요구라 명시 신호가 맞다
+  if(hitSlot&&T.bMark){
+    const my=y-S*0.62-Math.abs(Math.sin(now*7))*S*0.05, mr=S*0.19;
+    ctx.beginPath(); ctx.arc(x,my,mr,0,TAU);
+    ctx.fillStyle='#ffffff'; ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.42)'; ctx.lineWidth=Math.max(1.4,S*0.022); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x,my-mr*0.5); ctx.lineTo(x,my+mr*0.08);
+    ctx.strokeStyle='#d9503c'; ctx.lineWidth=Math.max(2.4,S*0.05); ctx.lineCap='round'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x,my+mr*0.46,Math.max(1.4,S*0.028),0,TAU);
+    ctx.fillStyle='#d9503c'; ctx.fill();
+  }
+}
+
+function drawWater(){
+  const w=cv.width/DPR, h=cv.height/DPR;
+  ctx.fillStyle='#49bccb'; ctx.fillRect(0,0,w,h);
+  // 코스틱
+  // 코스틱 — 두 방향을 겹쳐 셀 형태로
+  ctx.save(); ctx.strokeStyle='#e9fcff'; ctx.lineCap='round';
+  for(let pass=0;pass<2;pass++){
+    const tilt=pass?0.55:-0.42, n=pass?11:13;
+    ctx.globalAlpha=pass?0.07:0.10;
+    ctx.lineWidth=S*(pass?0.035:0.05);
+    for(let i=-3;i<n+3;i++){
+      ctx.beginPath();
+      for(let j=0;j<=34;j++){
+        const px=j/34*w;
+        const py=(i/n)*h+px*tilt*0.10
+          +Math.sin(j*0.62+now*(pass?-0.28:0.34)+i*1.9)*S*0.26
+          +Math.cos(j*0.31-now*0.2+i*0.7)*S*0.15;
+        j?ctx.lineTo(px,py):ctx.moveTo(px,py);
+      }
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  // 바닥 지형
+  rocks.forEach(r=>{
+    ctx.beginPath(); ctx.ellipse(r.x*S,r.y*S,r.r*S,r.r*S*0.78,0,0,TAU);
+    ctx.fillStyle='rgba(150,175,180,.55)'; ctx.fill();
+    ctx.strokeStyle='rgba(60,110,120,.35)'; ctx.lineWidth=1.2; ctx.stroke();
+  });
+  weeds.forEach(v=>{
+    ctx.save(); ctx.translate(v.x*S,v.y*S); ctx.globalAlpha=0.4;
+    ctx.strokeStyle='#3f8f6d'; ctx.lineWidth=S*0.045; ctx.lineCap='round';
+    for(let k=-1;k<=1;k++){
+      ctx.beginPath(); ctx.moveTo(k*S*0.06,S*0.14*v.s);
+      ctx.quadraticCurveTo(k*S*0.12+Math.sin(now*0.9+v.p+k)*S*0.05,0,k*S*0.10,-S*0.16*v.s);
+      ctx.stroke();
+    }
+    ctx.restore();
+  });
+}
+
+function drawDebug(){
+  if(!bob.active||bob.phase!=='water') return;
+  if(T.dStartle){
+    ctx.beginPath(); ctx.arc(bob.x*S,bob.y*S,SPECIES.perch.startleR*S,0,TAU);
+    ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.setLineDash([4,6]); ctx.lineWidth=1.2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(bob.x*S,bob.y*S,SPECIES.trophy.startleR*S,0,TAU);
+    ctx.strokeStyle='rgba(255,180,150,.5)'; ctx.stroke(); ctx.setLineDash([]);
+  }
+  if(T.dNotice){
+    ctx.beginPath(); ctx.arc(bob.x*S,bob.y*S,SPECIES.trophy.startleR*NOTICE_MUL*S,0,TAU);
+    ctx.strokeStyle='rgba(232,163,61,.42)'; ctx.setLineDash([2,7]); ctx.lineWidth=1.4; ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+
+function render(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  drawWater();
+  drawDebug();
+  const sorted=[...fish].sort((a,b)=>a.y-b.y);
+  sorted.forEach(drawFish);
+  drawBobber();
+  drawFlyers();
+}
+
+/* ═══ UI ══════════════════════════════════════════════════════════ */
+const el={};
+['clock','bar','score','hint','result','rScore','rTitle','rTable','rAgain',
+ 'tally','hist','hstat','btnStart','btnPause','btnClear','dhead','dbody','caret'
+].forEach(k=>el[k]=document.getElementById(k));
+
+function drawTally(){
+  el.tally.innerHTML=ORDER.map(k=>{
+    const sp=SPECIES[k], n=caught[k];
+    return `<div class="trow" data-sp="${k}">
+      <span class="swatch" style="background:${sp.body}"></span>
+      <span class="tname">${sp.name}<br><span class="tpt">${sp.score}점</span></span>
+      <span class="tnum ${n?'':'zero'}">${n}</span></div>`;
+  }).join('');
+  el.score.textContent=score;
+}
+
+function pulseRow(key){
+  const el2=document.querySelector('.trow[data-sp="'+key+'"]');
+  if(!el2) return;
+  el2.classList.remove('hit'); void el2.offsetWidth; el2.classList.add('hit');
+}
+
+function drawHist(){
+  if(!history.length){el.hist.innerHTML='<span class="hempty">아직 없음</span>';el.hstat.hidden=true;return}
+  const max=Math.max(...history.map(h=>h.score),1);
+  el.hist.innerHTML=history.map((h,i)=>
+    `<div class="hrow"><span style="color:var(--ink-faint)">${String(history.length-i).padStart(2,' ')}</span>
+     <span class="hbar"><i style="width:${h.score/max*100}%"></i></span><b>${h.score}</b></div>`).join('');
+  const ss=history.map(h=>h.score);
+  const avg=(ss.reduce((a,b)=>a+b,0)/ss.length).toFixed(1);
+  el.hstat.hidden=false;
+  el.hstat.innerHTML=`<span>평균 ${avg}</span><span>폭 ${Math.min(...ss)} – ${Math.max(...ss)}</span>`;
+}
+
+function tickUI(){
+  const m=Math.floor(tLeft/60), s=Math.floor(tLeft%60);
+  el.clock.textContent=`${m}:${String(s).padStart(2,'0')}`;
+  el.clock.classList.toggle('low',tLeft<15&&running);
+  el.bar.style.width=(tLeft/T.dur*100)+'%';
+}
+
+/* 슬라이더 */
+function bindSlider(id,vid,key,fmt){
+  const s=document.getElementById(id), v=document.getElementById(vid);
+  const upd=()=>{T[key]=parseFloat(s.value);v.textContent=fmt(T[key])};
+  s.addEventListener('input',upd); upd();
+}
+bindSlider('s1','v1','cur',x=>x.toFixed(2));
+bindSlider('s2','v2','app',x=>x.toFixed(2));
+bindSlider('s3','v3','win',x=>x.toFixed(2));
+bindSlider('s4','v4','dur',x=>x+'초');
+bindSlider('s5','v5','turnBoost',x=>x.toFixed(2));
+
+[['a1','autoReel'],['b3','lure'],['b4','catchFx'],['c0','notice'],['c1','iSpeed'],['c2','iStraight'],['c3','iTail'],['c4','iNoBank'],['c5','iTrail'],
+ ['b1','bRing'],['b2','bMark'],
+ ['d1','dLine'],['d2','dStartle'],['d3','dNotice'],['d4','dPath']].forEach(([id,key])=>{
+  const c=document.getElementById(id);
+  const upd=()=>T[key]=c.checked?1:0;
+  c.addEventListener('change',upd); upd();
+});
+[['r1','perch'],['r2','sardine'],['r3','puffer'],['r4','trophy']].forEach(([id,key])=>{
+  const c=document.getElementById(id);
+  const upd=()=>T.release[key]=c.checked?1:0;
+  c.addEventListener('change',upd); upd();
+});
+
+el.btnStart.addEventListener('click',()=>reset());
+el.rAgain.addEventListener('click',()=>reset());
+el.btnPause.addEventListener('click',()=>{paused=!paused;el.btnPause.textContent=paused?'계속':'일시정지'});
+el.btnClear.addEventListener('click',()=>{history=[];drawHist()});
+
+function toggleDrawer(){
+  const open=!el.dbody.hidden;
+  el.dbody.hidden=open;
+  el.caret.textContent=open?'열기 +':'닫기 −';
+  el.dhead.setAttribute('aria-expanded',String(!open));
+}
+el.dhead.addEventListener('click',toggleDrawer);
+el.dhead.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleDrawer()}});
+
+/* 입력 */
+cv.addEventListener('pointerdown',e=>{
+  if(!running) return;
+  el.hint.classList.add('gone');
+  if(hitSlot){reel();return}
+  if(bob.phase==='reel'||bob.phase==='casting') return;
+  const r=cv.getBoundingClientRect();
+  cast((e.clientX-r.left)/r.width*W,(e.clientY-r.top)/r.height*H,true);
+});
+window.addEventListener('keydown',e=>{
+  if(e.key===' '){e.preventDefault();if(hitSlot)reel()}
+  else if(e.key==='r'||e.key==='R') reset();
+  else if(e.key==='p'||e.key==='P'){paused=!paused;el.btnPause.textContent=paused?'계속':'일시정지'}
+});
+
+/* 루프 */
+let last=performance.now();
+function frame(t){
+  const dt=Math.min(0.05,(t-last)/1000); last=t;
+  if(!paused) update(dt);
+  render(); tickUI();
+  requestAnimationFrame(frame);
+}
+resize(); reset(); running=false; tLeft=T.dur; drawTally(); drawHist();
+el.btnStart.textContent='세션 시작';
+requestAnimationFrame(frame);
+</script>

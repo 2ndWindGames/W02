@@ -1,0 +1,19 @@
+{
+  "name": "FishingV2.Editor",
+  "rootNamespace": "Fishing.V2.EditorTools",
+  "references": [
+    "FishingV2",
+    "Unity.RenderPipelines.Universal.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

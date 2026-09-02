@@ -1,0 +1,1980 @@
+<title>선회 벤치</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+
+<style>
+  /* ── 계기판 팔레트. 단일 테마로 확정한다 — 이건 문서가 아니라 장비다 ── */
+  :root{
+    --hull:#0B1214;        /* 본체 */
+    --panel:#121C1D;       /* 패널면 */
+    --panel-2:#182527;     /* 융기면 */
+    --line:#22322F;
+    --line-hi:#31463F;
+    --ink:#DBE7E1;
+    --ink-2:#8CA49C;
+    --ink-3:#5E7570;
+    --amber:#E5A03A;       /* 유일한 강조색 */
+    --amber-dim:#8A6224;
+    --teal:#5FBCA6;
+    --bad:#D9695A;
+    --r:3px;
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--hull); color:var(--ink);
+    font-family:"IBM Plex Sans KR",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:14px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+        font-variant-numeric:tabular-nums}
+
+  /* ── 셸 ─────────────────────────────────────────────────────── */
+  .rig{max-width:1440px;margin:0 auto;padding:22px 22px 40px;
+       display:flex;flex-direction:column;gap:16px}
+
+  header.bar{display:flex;align-items:flex-end;justify-content:space-between;
+             gap:20px;flex-wrap:wrap;
+             padding-bottom:13px;border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:baseline;gap:12px}
+  h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em}
+  .sub{color:var(--ink-3);font-size:12px}
+  .kicker{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+          color:var(--amber);font-weight:500}
+
+  /* ── 본체: 화면 + 조작 레일 ───────────────────────────────── */
+  .deck{display:grid;grid-template-columns:minmax(0,1fr) 306px;gap:16px;align-items:start}
+  @media (max-width:960px){ .deck{grid-template-columns:minmax(0,1fr)} }
+
+  .stage{position:relative;border:1px solid var(--line-hi);border-radius:var(--r);
+         overflow:hidden;background:#0d2028;
+         box-shadow:inset 0 0 0 1px rgba(0,0,0,.6), 0 12px 34px rgba(0,0,0,.42)}
+  .stage canvas{display:block;width:100%;height:auto}
+  .hint{position:absolute;left:12px;top:11px;
+        font-size:11px;letter-spacing:.02em;color:rgba(226,240,235,.62);
+        background:rgba(6,16,18,.55);padding:4px 9px;border-radius:2px;
+        pointer-events:none;transition:opacity .45s ease}
+  .hint.gone{opacity:0}
+
+  /* 접근 방식 칩 */
+  .sbar{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+  .sbar button{flex:1 1 46%;padding:6px 4px;font-size:11.5px}
+  .sbar button[aria-pressed=true]{background:var(--amber);border-color:var(--amber);color:#1B1206}
+  .plan{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--ink-3);
+        margin-left:auto;letter-spacing:.02em}
+
+  /* 프리셋 바 — 비교는 여기서 한다 */
+  .pbar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
+  .pbar button{flex:1 1 0;min-width:104px;padding:8px 6px;font-size:12.5px;line-height:1.25;
+               display:flex;flex-direction:column;align-items:center;gap:2px}
+  .pbar button b{font-weight:500}
+  .pbar button i{font-style:normal;font-family:"IBM Plex Mono",monospace;
+                 font-size:9.5px;letter-spacing:.12em;color:var(--ink-3)}
+  .pbar button[aria-pressed=true]{background:var(--amber);border-color:var(--amber);color:#1B1206}
+  .pbar button[aria-pressed=true] i{color:#5C4211}
+  .lookfor{margin:0 0 11px;padding:9px 12px;font-size:12.5px;line-height:1.55;
+           background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--amber);
+           border-radius:var(--r);color:var(--ink-2)}
+  .lookfor b{color:var(--ink);font-weight:500}
+
+  /* 판독 스트립 */
+  .readout{display:flex;flex-wrap:wrap;gap:1px;background:var(--line);
+           border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .cell{flex:1 1 96px;background:var(--panel);padding:7px 11px 8px}
+  .cell dt{margin:0;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+           color:var(--ink-3)}
+  .cell dd{margin:2px 0 0;font-size:15px;font-weight:500;color:var(--ink)}
+  .cell dd em{font-style:normal;font-size:10.5px;color:var(--ink-3);margin-left:3px}
+
+  /* ── 조작 레일 ───────────────────────────────────────────── */
+  .rail{display:flex;flex-direction:column;gap:11px}
+  .mod{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+       padding:12px 13px 14px}
+  .mod > h2{margin:0 0 10px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+            color:var(--ink-3);font-weight:600;
+            display:flex;align-items:center;gap:8px}
+  .mod > h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .mod p.note{margin:9px 0 0;font-size:11.5px;line-height:1.5;color:var(--ink-3)}
+
+  /* 슬라이더 */
+  .sl{margin-bottom:11px}
+  .sl:last-child{margin-bottom:0}
+  .sl .top{display:flex;justify-content:space-between;align-items:baseline;
+           font-size:12px;margin-bottom:4px}
+  .sl .top b{font-weight:500;color:var(--ink-2)}
+  .sl .top span{font-size:11.5px;color:var(--amber)}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:16px;
+                    background:transparent;cursor:pointer;display:block}
+  input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--line-hi);border-radius:2px}
+  input[type=range]::-moz-range-track{height:2px;background:var(--line-hi);border-radius:2px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;
+      border-radius:50%;background:var(--amber);margin-top:-4.5px;
+      border:2px solid var(--panel);box-shadow:0 0 0 1px var(--amber-dim)}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border:2px solid var(--panel);
+      border-radius:50%;background:var(--amber);box-shadow:0 0 0 1px var(--amber-dim)}
+  input[type=range]:focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:2px}
+
+  /* 토글 행 */
+  .tg{display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:5px 0;font-size:12.5px;color:var(--ink-2);cursor:pointer;
+      border-bottom:1px solid rgba(34,50,47,.6)}
+  .tg:last-child{border-bottom:none}
+  .tg input{position:absolute;opacity:0;width:0;height:0}
+  .sw{position:relative;flex:0 0 30px;height:16px;border-radius:9px;
+      background:var(--line-hi);transition:background .16s ease}
+  .sw::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;
+             border-radius:50%;background:#7a8f89;transition:transform .16s ease,background .16s ease}
+  .tg input:checked + .sw{background:var(--amber-dim)}
+  .tg input:checked + .sw::after{transform:translateX(14px);background:var(--amber)}
+  .tg input:focus-visible + .sw{outline:2px solid var(--amber);outline-offset:2px}
+
+  /* 버튼 */
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  button{font:inherit;font-size:12.5px;color:var(--ink);background:var(--panel-2);
+         border:1px solid var(--line-hi);border-radius:2px;padding:7px 8px;cursor:pointer;
+         transition:background .13s ease,border-color .13s ease,color .13s ease}
+  button:hover{background:#20302f;border-color:#3d564d}
+  button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  button.wide{grid-column:1 / -1}
+  button.hot{background:var(--amber);border-color:var(--amber);color:#1B1206;font-weight:600}
+  button.hot:hover{background:#f0ae4c;border-color:#f0ae4c}
+  button.armed{background:var(--bad);border-color:var(--bad);color:#22100C;font-weight:600}
+
+  /* 어종 목록 — 타입으로 묶는다 */
+  .tHead{display:flex;align-items:center;gap:8px;margin:11px 0 2px;
+         font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.11em;
+         text-transform:uppercase;color:var(--teal)}
+  .tHead:first-child{margin-top:0}
+  .tHead em{font-style:normal;color:var(--ink-3)}
+  .tHead::after{content:"";flex:1;height:1px;background:var(--line)}
+  .chip{width:10px;height:10px;border-radius:2px;flex:0 0 auto;display:block}
+  .nm{flex:1}
+  .nm em{font-style:normal;font-size:10px;letter-spacing:.08em;color:var(--teal);
+         border:1px solid var(--line-hi);border-radius:2px;padding:0 4px;margin-left:5px}
+
+  /* 하단 설명 */
+  .foot{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:14px;
+        border-top:1px solid var(--line);padding-top:16px;margin-top:4px}
+  .foot section h3{margin:0 0 5px;font-size:12px;font-weight:600;color:var(--ink)}
+  .foot section p{margin:0;font-size:12.5px;line-height:1.62;color:var(--ink-3)}
+  code{font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+       background:var(--panel-2);border:1px solid var(--line);border-radius:2px;
+       padding:1px 4px;color:var(--teal)}
+  .warn{color:var(--bad)}
+</style>
+
+<div class="rig">
+  <header class="bar">
+    <div class="brand">
+      <h1>선회 벤치</h1>
+      <span class="sub mono">procedural mesh · vertex bend</span>
+    </div>
+    <div class="kicker">Blender 생성 · 셰이더 구동</div>
+  </header>
+
+  <div class="deck">
+    <div>
+      <div class="pbar" id="pbar"></div>
+      <p class="lookfor" id="lookfor"></p>
+      <div class="stage" id="stage">
+        <canvas id="cv"></canvas>
+        <div class="hint" id="hint">수면을 클릭하면 찌가 떨어지고, 근처 물고기가 몸을 틀어 다가옵니다</div>
+      </div>
+      <dl class="readout" style="margin-top:11px">
+        <div class="cell"><dt>프레임</dt><dd class="mono" id="rFps">—<em>fps</em></dd></div>
+        <div class="cell"><dt>개체</dt><dd class="mono" id="rFish">—</dd></div>
+        <div class="cell"><dt>삼각형</dt><dd class="mono" id="rTri">—</dd></div>
+        <div class="cell"><dt>최대 선회</dt><dd class="mono" id="rTurn">—<em>°/s</em></dd></div>
+        <div class="cell"><dt>카메라</dt><dd class="mono" id="rTilt">0<em>° 기울임</em></dd></div>
+      </dl>
+    </div>
+
+    <div class="rail">
+      <div class="mod">
+        <h2>휨</h2>
+        <label class="tg" for="tBend">
+          <span>정점 휨 사용</span>
+          <input type="checkbox" id="tBend" checked><i class="sw"></i>
+        </label>
+        <p class="note" id="bendNote">끄면 지금 스프라이트 버전과 같은 상태가 됩니다 — 몸이 굳은 채로 미끄러집니다.</p>
+        <div style="height:11px"></div>
+        <div class="sl"><div class="top"><b>유영 파동</b><span id="vAmp">0.16</span></div>
+          <input type="range" id="sAmp" min="0" max="0.40" step="0.01" value="0.16"></div>
+        <div class="sl"><div class="top"><b>파동 속도</b><span id="vFreq">1.00</span></div>
+          <input type="range" id="sFreq" min="0.2" max="2.5" step="0.05" value="1.0"></div>
+        <div class="sl"><div class="top"><b>선회 굽힘 계수</b><span id="vTurn">0.85</span></div>
+          <input type="range" id="sTurn" min="0" max="2.2" step="0.05" value="0.85"></div>
+      </div>
+
+      <div class="mod">
+        <h2>생동감 (v0.5)</h2>
+        <p class="note">하나씩 꺼보면 각각이 뭘 하는지 보입니다. 전부 끄면 이전 버전입니다.</p>
+        <div style="height:9px"></div>
+        <label class="tg" for="tJet"><span>외투강 충전 · 분사</span>
+          <input type="checkbox" id="tJet" checked><i class="sw"></i></label>
+        <p class="note">오징어가 <b>돌진 전에 부푼다.</b> 예고 동작이 공짜로 생깁니다.</p>
+        <div style="height:9px"></div>
+        <label class="tg" for="tBank"><span>선회 시 뱅킹</span>
+          <input type="checkbox" id="tBank" checked><i class="sw"></i></label>
+        <p class="note">기울여 보세요(아래 <b>카메라 기울임</b>). 끄면 납작한 종이처럼 보입니다.</p>
+        <div style="height:9px"></div>
+        <label class="tg" for="tGlide"><span>비트 앤 글라이드</span>
+          <input type="checkbox" id="tGlide" checked><i class="sw"></i></label>
+        <p class="note">끄면 사인파가 일정해서 <b>메트로놈</b>이 됩니다.</p>
+        <div style="height:9px"></div>
+        <div class="sl"><div class="top"><b>다리 위상 분산</b><span id="vSpread">5.4</span></div>
+          <input type="range" id="sSpread" min="0" max="9" step="0.2" value="5.4"></div>
+        <p class="note">0 이면 다리 8가닥이 한 몸으로 움직여 <b>갈퀴</b>가 됩니다.</p>
+        <div style="height:9px"></div>
+        <label class="tg" for="tFin"><span>가슴지느러미 젓기</span>
+          <input type="checkbox" id="tFin" checked><i class="sw"></i></label>
+        <p class="note">느릴수록 크게 젓고 빠를수록 몸에 붙입니다.
+          <b>머무는 중</b>과 <b>내달리는 중</b>이 지느러미만 봐도 구분됩니다.</p>
+        <div style="height:9px"></div>
+        <label class="tg" for="tRec"><span>좌우 재중심 (까닥거림)</span>
+          <input type="checkbox" id="tRec" checked><i class="sw"></i></label>
+        <p class="note">끄면 <b>주둥이가 축</b>이 되어 몸 전체가 좌우로 까닥입니다.
+          켜면 무게중심이 축이 되고 머리가 꼬리와 반대로 돕니다.</p>
+        <div style="height:9px"></div>
+        <label class="tg" for="tAvoid"><span>물고기끼리 회피 (드드득)</span>
+          <input type="checkbox" id="tAvoid" checked><i class="sw"></i></label>
+        <p class="note">이 둘을 <b>따로 껐다 켜보세요.</b> 까닥거림과 드드득은 원인이 다릅니다 —
+          까닥은 <b>휨의 축</b>, 드드득은 <b>회피가 위치를 흔들어 머리 방향이 튀는 것</b>입니다.</p>
+        <div style="height:9px"></div>
+        <label class="tg" for="tCst"><span>C-스타트 (도피)</span>
+          <input type="checkbox" id="tCst" checked><i class="sw"></i></label>
+        <p class="note">찌를 <b>물고기 바로 옆에</b> 던져보세요. 몸을 C 로 접었다 펴며 튕겨나갑니다.
+          끄면 그냥 빨라지기만 해서 '재생 속도를 올린 것'으로 보입니다.</p>
+      </div>
+
+      <div class="mod">
+        <h2>움직임</h2>
+        <div class="sl"><div class="top"><b>시간 배속</b><span id="vSpeed">1.00×</span></div>
+          <input type="range" id="sSpeed" min="0" max="2.5" step="0.05" value="1.0"></div>
+        <div class="sl"><div class="top"><b>머리 추종</b><span id="vHead">0.35</span></div>
+          <input type="range" id="sHead" min="0.05" max="1" step="0.05" value="0.35"></div>
+        <div class="sl"><div class="top"><b>사행 폭</b><span id="vLane">1.00×</span></div>
+          <input type="range" id="sLane" min="0" max="1.4" step="0.05" value="1.0"></div>
+        <div class="sl"><div class="top"><b>사행 주기</b><span id="vLaneT">1.00×</span></div>
+          <input type="range" id="sLaneT" min="0.6" max="3" step="0.05" value="1.0"></div>
+        <div class="sl"><div class="top"><b>슬립 상한</b><span id="vSlip">18°</span></div>
+          <input type="range" id="sSlip" min="4" max="60" step="1" value="18"></div>
+        <div class="btns">
+          <button id="bPause">일시정지</button>
+          <button id="bStep">한 프레임</button>
+          <button class="wide hot" id="bTurnAll">전원 급선회 (누르는 동안)</button>
+        </div>
+        <p class="note"><b>머리 추종</b>을 1.0 으로 올리면 머리가 진행 방향에 딱 붙습니다 —
+           순항 중에도 좌우로 흔들립니다. 낮추면 머리는 침로를 유지하고 몸만 사행합니다.
+           <b>사행 폭</b>은 좌우 진폭(=물고기가 지나는 자리)이고,
+           <b>사행 주기</b>는 같은 폭을 더 길게 늘여 곡률만 낮춥니다 — 지나는 자리는 그대로입니다.</p>
+      </div>
+
+      <div class="mod">
+        <h2>접근 방식</h2>
+        <div class="sbar" id="sbar"></div>
+        <p class="note" id="sdesc"></p>
+        <div style="height:10px"></div>
+        <div class="sl"><div class="top"><b>최소 선회 반경</b><span id="vRad">0.55</span></div>
+          <input type="range" id="sRad" min="0.05" max="1.6" step="0.05" value="0.55"></div>
+        <div class="sl"><div class="top"><b>근접 선회 보정</b><span id="vClose">0.40</span></div>
+          <input type="range" id="sClose" min="0.15" max="1" step="0.05" value="0.40"></div>
+        <label class="tg" for="tFit"><span>속도 적합 (소용돌이 방지)</span>
+          <input type="checkbox" id="tFit" checked><i class="sw"></i></label>
+        <p class="note">몸길이 배수입니다. 선회율을 <b>ω = 속도 / 반경</b> 으로 뽑기 때문에
+           느린 물고기도 제자리에서 돌지 않습니다. 0.05 로 내리면 예전처럼 팽이가 됩니다.<br>
+           <b>근접 보정</b>은 목표 코앞에서만 반경을 조입니다(기획서 §11).<br>
+           <b>속도 적합</b>을 끄면 가까운 찌에서 소용돌이가 돌아옵니다 — 특히 학공치.
+           선회 반경은 <b>v/ω</b> 라 빠른 물고기일수록 크게 돕니다.</p>
+      </div>
+
+      <div class="mod">
+        <h2>이전 동작과 비교</h2>
+        <label class="tg" for="tSlip"><span>슬립 상한</span>
+          <input type="checkbox" id="tSlip" checked><i class="sw"></i></label>
+        <label class="tg" for="tSmooth"><span>선회·속도 평활화</span>
+          <input type="checkbox" id="tSmooth" checked><i class="sw"></i></label>
+        <p class="note">개별 스위치입니다. 통째로 비교하려면 <b>화면 위 프리셋</b>을 쓰세요 —
+           <b>1</b>~<b>5</b> 키로도 넘길 수 있습니다.</p>
+      </div>
+
+      <div class="mod">
+        <h2>카메라 · 표시</h2>
+        <div class="sl"><div class="top"><b>기울임</b><span id="vTilt">0°</span></div>
+          <input type="range" id="sTilt" min="0" max="62" step="1" value="0"></div>
+        <label class="tg" for="tShadow"><span>그림자</span>
+          <input type="checkbox" id="tShadow" checked><i class="sw"></i></label>
+        <label class="tg" for="tRim"><span>외곽 어둠</span>
+          <input type="checkbox" id="tRim" checked><i class="sw"></i></label>
+        <label class="tg" for="tWire"><span>와이어프레임</span>
+          <input type="checkbox" id="tWire"><i class="sw"></i></label>
+        <label class="tg" for="tTrail"><span>궤적</span>
+          <input type="checkbox" id="tTrail"><i class="sw"></i></label>
+      </div>
+
+      <div class="mod">
+        <h2>어종 · 타입</h2>
+        <div id="spList"></div>
+        <div class="sl" style="margin-top:11px"><div class="top"><b>독립 성향</b><span id="vSolo">1.00×</span></div>
+          <input type="range" id="sSolo" min="0" max="3" step="0.1" value="1.0"></div>
+        <p class="note">무리 성향은 어종이 아니라 <b>개체</b>의 성질입니다. 소어도 15%는 혼자 다니고,
+           잡어도 30%는 둘셋이 몰려다닙니다. 올리면 전부 흩어집니다.</p>
+        <div class="btns" style="margin-top:10px">
+          <button id="bMvp">MVP 4종</button>
+          <button id="bAll">확장 7종</button>
+          <button class="wide" id="bReseed">다시 배치</button>
+        </div>
+        <p class="note">같은 타입끼리 묶어놨습니다. <b>Lane 2종</b>이 서로 다른 물고기로 읽히는지,
+           <b>무리 × Hover</b>가 성립하는지가 이 실험의 전부입니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <section>
+      <h3>보는 법</h3>
+      <p>프리셋 <b>1 → 5</b> 를 순서대로 눌러보세요. 고친 순서 그대로입니다.
+         개체는 안 바뀌고 값만 바뀌므로 <b>같은 물고기로 A/B</b> 가 됩니다.
+         <b>3번에서 대물</b>을 보세요 — 게걸음이 거기서 나옵니다.
+         그다음 수면을 클릭해 찌를 던지고, 오른쪽 <b>접근 방식</b>을 하나씩 눌러보세요.</p>
+    </section>
+    <section>
+      <h3>세 가지 시험</h3>
+      <p><b>Lane 2종</b> — 잡어와 학공치가 같은 수식으로 다른 물고기가 되는가.
+         <b>Loop 2종</b> — 8자 파라미터만으로 대물과 접시고기가 갈리는가.
+         <b>무리 × Hover</b> — 무리가 Lane 밖의 법칙 위에도 얹히는가.</p>
+    </section>
+    <section>
+      <h3>휨은 애니메이션이 아닙니다</h3>
+      <p>본도 클립도 없습니다. 정점 셰이더가 매 프레임
+         <code>sin(phase)</code> 와 <code>turnRate</code> 로 몸통을 굽힙니다.
+         Blender 는 메시만 만들었습니다.</p>
+    </section>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   선회 벤치 — 절차적 물고기 메시 + 정점 휨
+   fishgen.py 의 메시 생성을 그대로 옮기고, Blender에서 파이썬으로 하던
+   휨을 정점 셰이더로 옮겼다. 값은 bite-bench.html 의 어종표를 따른다.
+   ═══════════════════════════════════════════════════════════════════ */
+const W = 16, H = 9;                       // 수면 크기 (유닛)
+const TAU = Math.PI * 2, DEG = Math.PI / 180;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const rndi = (a, b) => Math.floor(rnd(a, b + 1));
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const wrapPi = a => ((a + Math.PI) % TAU + TAU) % TAU - Math.PI;
+const angLerp = (a, b, t) => a + wrapPi(b - a) * t;
+
+/* ── 어종 ────────────────────────────────────────────────────────
+   형태(wprof/hprof/…)는 fishgen.py, 이동(path/speed/turn…)은 bite-bench */
+const GEN_W = [[0,0],[.04,.20],[.12,.48],[.24,.78],[.38,1.0],[.54,.92],[.68,.70],[.80,.44],[.90,.24],[1,.11]];
+const GEN_H = [[0,0],[.04,.26],[.12,.56],[.24,.84],[.38,1.0],[.54,.95],[.68,.76],[.80,.50],[.90,.28],[1,.13]];
+
+/* ── 운동 법칙 ───────────────────────────────────────────────────
+   타입이 실재하는지 보려면 먼저 '같은 인터페이스'를 강제해야 한다.
+   init / pos / anchor 는 필수, tick 은 스스로 조향하는 타입만.
+   여기 안 들어가는 게 나오면 그게 곧 "타입은 이름일 뿐"이라는 증거다. */
+const PATHS = {
+  lane: {
+    label:'Lane', wraps:true,
+    init(f, P, band){
+      const dir = Math.random() < 0.5 ? 1 : -1, a = rnd(-0.35, 0.35);
+      f.lane = {dx:Math.cos(a)*dir, dy:Math.sin(a)*dir, phase:rnd(0,TAU),
+                ox:rnd(1, W-1), oy:rnd(band[0]*H, band[1]*H)};
+      f.t = 0;                       // ⚠️ 랜덤 금지 — 경로가 origin+dir*v*t 라 화면 밖에 뜬다
+    },
+    pos(f, t, P){
+      const d = f.lane, along = P.speed*t,
+            lat = P.amp*UI.laneK*Math.sin(TAU*t/(P.period*UI.laneT) + d.phase);
+      return [d.ox + d.dx*along - d.dy*lat, d.oy + d.dy*along + d.dx*lat];
+    },
+    anchor(f, P){
+      // loop 과 같은 함정. t=0 이어도 lat = amp·sin(phase) 이라 위상이 랜덤이면
+      // 그만큼(잡어 최대 0.6유닛 = 몸길이의 60%) 옆으로 튄다. 원점을 역산한다.
+      const d = f.lane, ph = rnd(0, TAU);
+      const lat0 = P.amp*UI.laneK*Math.sin(ph);
+      f.t = 0;
+      f.lane = Object.assign({}, d, {ox:f.x + d.dy*lat0, oy:f.y - d.dx*lat0, phase:ph});
+    }
+  },
+
+  loop: {
+    label:'Loop', wraps:false,
+    init(f, P, band){
+      // ⚠️ 예전엔 중심을 **연못 한가운데(W/2 ± 1.2)** 에 몰아놨다. 같은 종이 둘이면
+      //    거의 같은 8자를 돌아서 계속 겹친다 — 실측 겹침 52%. 회피로도 못 푼다.
+      //    같은 궤도에 갇혀 있으면 밀어내도 다시 만나기 때문이다.
+      //    → 중심을 연못 전체에 흩고, 위상도 갈라 놓는다.
+      const lo = P.a*0.55+0.6, hi = W - P.a*0.55-0.6;
+      f.cx = hi > lo ? rnd(lo, hi) : W/2;
+      f.cy = clamp(rnd(band[0]*H, band[1]*H), P.b*0.6+0.4, H - P.b*0.6-0.4);
+      f.phase0 = rnd(0,TAU); f.t = 0;
+      // 같은 종이 이미 있으면 위상을 반대편으로 밀어 같은 지점에서 만나지 않게
+      const same = fish.filter(g => g.sp === f.sp && g !== f && g.phase0 !== undefined);
+      if (same.length) f.phase0 = (same[same.length-1].phase0 + Math.PI + rnd(-0.6,0.6)) % TAU;
+    },
+    // ★ 중심이 아주 천천히 표류한다. 8자가 제자리에 고정돼 있으면
+    //   '레일 위의 장난감'으로 읽힌다. 화면 밖까지 나갔다 돌아온다.
+    tick(f, dt, P){
+      if (!P.driftV) return;
+      f.cx += Math.sin(now*0.13 + f.phase0)       * P.driftV * dt;
+      f.cy += Math.cos(now*0.11 + f.phase0*1.7)   * P.driftV * 0.55 * dt;
+      f.cx = clamp(f.cx, -P.a*0.55, W + P.a*0.55);   // 화면 밖 여유를 준다
+      f.cy = clamp(f.cy, -P.b*0.30, H + P.b*0.30);
+    },
+    pos(f, t, P){
+      const w = TAU/P.period;
+      return [f.cx + P.a*Math.cos(w*t + f.phase0), f.cy + P.b*Math.sin(2*(w*t + f.phase0))];
+    },
+    anchor(f, P){
+      // ⚠️ 예전엔 중심을 현재 위치로 두고 위상을 랜덤으로 골랐다. 그러면
+      //    pos() 가 cx + a·cos(phase0) 을 돌려주므로 **최대 a(=4유닛,
+      //    대물 몸길이의 2.3배) 떨어진 곳으로 순간이동**한다. 실측 4.0~5.5유닛.
+      //    위상을 먼저 고르고 **중심을 역산**해서 현재 위치가 궤도 위에 오게 한다.
+      let best = null;
+      for (let i = 0; i < 12; i++){
+        const ph = rnd(0, TAU);
+        const cx = f.x - P.a*Math.cos(ph), cy = f.y - P.b*Math.sin(2*ph);
+        const ox = clamp(cx, P.a*0.55+0.6, W - P.a*0.55-0.6);
+        const oy = clamp(cy, P.b+0.6,      H - P.b-0.6);
+        const err = Math.hypot(cx-ox, cy-oy);      // 화면 밖으로 밀린 만큼이 곧 튐
+        if (!best || err < best.err) best = {ph, cx:ox, cy:oy, err};
+        if (err < 1e-3) break;
+      }
+      f.phase0 = best.ph; f.cx = best.cx; f.cy = best.cy; f.t = 0;
+    }
+  },
+
+  hover: {
+    label:'Hover-Dash', wraps:false, steersItself:true,
+    init(f, P, band){
+      f.hx = rnd(2.5, W-2.5); f.hy = clamp(rnd(band[0]*H, band[1]*H), 1.2, H-1.2);
+      f.homeX = f.hx; f.homeY = f.hy;
+      f.hover = rnd(P.hoverT[0], P.hoverT[1]); f.hoverMax = f.hover;
+      f.dash = null; f.aim = null;
+    },
+    // ★ 파라미터만 랜덤이면 '부유-돌진-부유-돌진'이라는 **리듬 자체**가 그대로 읽힌다.
+    //   기분을 바꿔서 리듬을 바꾼다 — 한참 가만히 있기도 하고, 짧게 여러 번 튀기도 한다.
+    moods: [
+      {k:'still',    w:0.30, hoverK:2.4, distK:0.72, n:[1,2]},
+      {k:'cruise',   w:0.42, hoverK:1.0, distK:1.00, n:[2,3]},
+      {k:'skittish', w:0.28, hoverK:0.26, distK:0.62, n:[3,6]}
+    ],
+    pickMood(f){
+      const M = PATHS.hover.moods;
+      let r = Math.random() * M.reduce((a,m)=>a+m.w, 0);
+      for (const m of M){ r -= m.w; if (r <= 0){ f.mood = m; break; } }
+      f.mood = f.mood || M[1];
+      f.moodN = rndi(f.mood.n[0], f.mood.n[1]);
+    },
+    tick(f, dt, P, sp){
+      if (!f.mood) PATHS.hover.pickMood(f);
+      // ★ 선회율은 언제나 반경에서 나온다 — ω = v / R.
+      //   예전엔 여기서 sp.turn*0.7 을 그대로 썼다. 부유 속도 0.07 에 67°/s 면
+      //   반경이 몸길이의 6% 다. 즉 제자리 회전. 정지 화면으로는 절대 안 보인다.
+      const cap = spd => Math.min(sp.turn,
+        spd / Math.max(0.04, (P.minR ?? 0.9) * sp.L) * (180/Math.PI));
+
+      if (f.dash){
+        f.dash.t += dt;
+        const u = clamp(f.dash.t/P.dashT, 0, 1);
+        // 제트 분사: 살짝 차오른 뒤 터지고 활강한다. ∫ = 1 이라 dashDist 가 그대로 거리.
+        const spd = f.dash.len * 12*u*Math.pow(1-u,2) / P.dashT;
+        // ★ 방향 전환은 여기서 일어난다. 속도가 있어야 호가 그려진다.
+        if (f.aim != null) f.steerRate = steer(f, f.aim, dt, cap(spd));
+        f.hx += Math.cos(f.ang)*spd*dt; f.hy += Math.sin(f.ang)*spd*dt;
+        if (u >= 1){
+          f.dash = null; f.aim = null;
+          if (--f.moodN <= 0) PATHS.hover.pickMood(f);      // 기분이 바뀌면 리듬이 바뀐다
+          f.hover = rnd(P.hoverT[0], P.hoverT[1]) * f.mood.hoverK;
+          f.hoverMax = f.hover;                             // 충전 예고용
+        }
+      } else {
+        f.hover -= dt;
+        // 돌진 순간에 방향을 정하면 180도를 즉시 돌아야 해서 제자리 회전이 된다.
+        if (f.aim == null){
+          f.aim = (Math.hypot(f.hx-f.homeX, f.hy-f.homeY) > P.homeR*0.7)
+            ? Math.atan2(f.homeY-f.hy, f.homeX-f.hx)
+            : f.ang + rnd(-1.4, 1.4);
+        }
+        const drift = P.drift ?? 0.18;
+        f.steerRate = steer(f, f.aim, dt, cap(drift));   // 부유 중엔 거의 못 튼다
+        f.hx += Math.cos(f.ang)*drift*dt; f.hy += Math.sin(f.ang)*drift*dt;
+        if (f.hover <= 0)
+          f.dash = {t:0, len:rnd(P.dashDist[0], P.dashDist[1]) * f.mood.distK};
+      }
+      f.hx = clamp(f.hx, 0.6, W-0.6); f.hy = clamp(f.hy, 0.6, H-0.6);
+    },
+    pos(f){ return [f.hx, f.hy]; },
+    anchor(f, P){ f.hx = f.x; f.hy = f.y; f.homeX = f.x; f.homeY = f.y;
+                  f.dash = null; f.aim = null; f.mood = null; }
+  }
+};
+
+/* 무리(School)는 타입이 아니라 **변형자**다. 어느 법칙 위에도 얹힌다.
+   sp.school 이 있으면 리더 1 + 추종자 n-1 로 스폰한다. */
+
+const SPECIES = {
+  /* ── MVP 5종 ─────────────────────────────────────────────────
+     v0.5: 색·이름만 바꾼 게 아니라 **실제 종의 형태**로 다시 잡았다.
+     탑다운에서 종을 가르는 것은 네 가지뿐이다 —
+       ① 폭 프로파일(고등어 가늘다 / 참치 럭비공 / 만새기 뒤로 급히 가늘어짐)
+       ② 등지느러미 길이 (만새기는 등 전체를 덮는다 — 제일 확실한 식별자)
+       ③ 꼬리 모양 (고등어·참치 깊은 초승달 / 연어 둥근 편)
+       ④ 무늬 (고등어 물결 가로줄 / 연어 반점 / 만새기 금+파랑 / 참치 진청) */
+
+  anchovy: {
+    // 멸치 — 가장 작고 가장 밝다. 큰 어종이 전부 어두운 등이라
+    // **밝은 은백**을 하나 둬야 화면에서 무리가 눈에 띈다.
+    name:'멸치', path:'lane', P:{speed:1.9, amp:0.38, period:5.8},
+    school:{n:[7,11], r:1.1, solo:0.06, gap:1.35},
+    L:0.42, wmax:0.048, hmax:0.056,
+    wprof:[[0,0],[.05,.28],[.14,.60],[.30,.93],[.44,1],[.60,.88],[.76,.60],[.88,.30],[1,.09]],
+    hprof:[[0,0],[.05,.34],[.14,.66],[.30,.95],[.44,1],[.60,.92],[.76,.66],[.88,.36],[1,.11]],
+    tail:{len:.22, spread:.16, notch:.62, cant:.03},      // 깊게 갈라진 초승달
+    pect:{u0:.30, u1:.42, len:.062, sweep:.44},
+    dorsal:{u0:.30, u1:.52, h:.052}, eye:{u:.150, spread:.56, r:.024},
+    base:[.46,.74,.82], edge:[.99,.99,.98], fin:[.72,.88,.92],
+    stripes:{n:1, u0:.30, u1:.56, amt:.30, w:.60},        // 옆구리 은색 띠 하나
+    approachPlan:[{style:'direct'}],
+    band:[.05,.45], count:[1,1], turn:280, approach:3.0,
+    waveAmp:0.70, waveFreq:2.3, finRipple:0.007, finRate:2.6, bank:0.50,
+    noticeR:3.6, mvp:true
+  },
+
+  salmon: {
+    name:'연어', path:'lane', P:{speed:1.15, amp:0.58, period:8.0},
+    L:1.15, wmax:0.162, hmax:0.145,
+    wprof:[[0,0],[.04,.30],[.12,.62],[.26,.88],[.40,1],[.56,.96],[.72,.76],[.86,.42],[1,.13]],
+    hprof:[[0,0],[.04,.36],[.12,.68],[.26,.92],[.40,1],[.56,.97],[.72,.80],[.86,.46],[1,.15]],
+    tail:{len:.23, spread:.19, notch:.26, cant:.05},      // 얕게 파인 편
+    pect:{u0:.29, u1:.43, len:.092, sweep:.42},
+    dorsal:{u0:.30, u1:.56, h:.066}, eye:{u:.165, spread:.57, r:.027},
+    adipose:{u:.74, len:.045},                            // 연어과의 기름지느러미
+    base:[.74,.30,.20], edge:[.99,.78,.60], fin:[.66,.32,.26],
+    stripes:{n:0}, spots:true,                            // 등의 검은 반점
+    approachPlan:[{style:'dash'}],
+    school:{n:[2,3], r:0.95, solo:0.68},
+    band:[.05,.95], count:[4,6], turn:200, approach:2.5,
+    waveAmp:1.0, waveFreq:1.0, finRipple:0.011, finRate:1.9, bank:0.42,
+    noticeR:3.2, mvp:true
+  },
+
+  mahi: {
+    name:'만새기', path:'loop', P:{a:3.4, b:2.1, period:6.5, driftV:0.42},
+    L:1.55, wmax:0.150, hmax:0.218,
+    // 앞이 뭉툭하게 높고 뒤로 급히 가늘어진다 — 만새기의 실루엣이 곧 이것
+    wprof:[[0,0],[.03,.44],[.10,.76],[.20,.96],[.34,1],[.50,.86],[.66,.60],[.82,.32],[1,.10]],
+    hprof:[[0,0],[.03,.62],[.10,.92],[.20,1],[.34,.99],[.50,.86],[.66,.62],[.82,.34],[1,.11]],
+    tail:{len:.26, spread:.20, notch:.58, cant:.03},
+    pect:{u0:.24, u1:.36, len:.080, sweep:.40},
+    dorsal:{u0:.07, u1:.84, h:.086},                      // ★ 등 전체를 덮는 긴 등지느러미
+    eye:{u:.120, spread:.54, r:.026},
+    base:[.14,.56,.36], edge:[.99,.88,.20], fin:[.16,.52,.66],
+    stripes:{n:0}, spots:true,
+    approachPlan:[{style:'dash', until:2.2}, {style:'hesitate'}],
+    band:[.25,.75], count:[1,2], turn:190, approach:2.2,
+    waveAmp:1.45, waveFreq:1.05, finRipple:0.012, finRate:2.0, bank:0.52,
+    noticeR:3.0, mvp:true
+  },
+
+  squid: {
+    name:'오징어', path:'hover',
+    // Hover-Dash 는 제트 추진이다. 물고기의 유영이 아니라 오징어의 움직임.
+    // 몸통 끝(외투강 끝)이 앞서고 다리가 끌려간다 — 그래서 +X 가 뾰족하다.
+    P:{hoverT:[1.6,3.4], dashT:0.58, dashDist:[1.8,2.9], homeR:3.0,
+       drift:0.20, minR:0.85},
+    L:1.05, wmax:0.130, hmax:0.108,
+    wprof:[[0,0],[.07,.28],[.20,.58],[.38,.86],[.56,1],[.72,.99],[.88,.93],[1,.82]],
+    hprof:[[0,0],[.07,.30],[.20,.58],[.38,.84],[.56,1],[.72,.97],[.88,.89],[1,.76]],
+    arms:{n:8, len:.40, spread:.40, w:.026, seg:7},
+    tail:{len:.16, spread:.16, notch:.15, cant:.05},
+    pect:{u0:.10, u1:.56, len:.150, sweep:.05, seg:12},
+    dorsal:{u0:.32, u1:.72, h:.018}, eye:{u:.84, spread:.70, r:.038, ring:1.24},
+    base:[.80,.66,.62], edge:[.99,.96,.92], fin:[.74,.58,.56],
+    stripes:{n:0}, spots:true,
+    approachPlan:[{style:'wary', until:1.7}, {style:'hesitate'}],
+    band:[.2,.8], count:[1,2], turn:105, approach:1.5,
+    // 외투막(aU 0~1.0)은 강체, 관절은 다리 밑동(aU 0.95)에만 있다.
+    waveAmp:0.55, waveFreq:0.9, waveLag:3.4, waveExp:1.0, waveHinge:0.95,
+    waveSpread:5.4, jet:true, bank:0.10, finRipple:0.020, finWave:11.0, finRate:4.2,
+    armDrift:0.105, arcBody:0.22,
+    noticeR:2.6, mvp:true
+  },
+
+  tuna: {
+    name:'참치', path:'loop', P:{a:4.6, b:2.9, period:7.0, driftV:0.55},
+    L:2.55, wmax:0.352, hmax:0.296,
+    // 럭비공 — 앞뒤가 두툼하고 미병에서 갑자기 가늘어진다
+    wprof:[[0,0],[.03,.30],[.09,.62],[.20,.90],[.34,1],[.48,.99],[.64,.82],[.80,.42],[.90,.20],[1,.07]],
+    hprof:[[0,0],[.03,.36],[.09,.68],[.20,.93],[.34,1],[.48,1],[.64,.86],[.80,.46],[.90,.22],[1,.08]],
+    tail:{len:.26, spread:.21, notch:.66, cant:.03},      // 깊은 초승달
+    pect:{u0:.26, u1:.40, len:.112, sweep:.42},
+    dorsal:{u0:.28, u1:.50, h:.078}, eye:{u:.140, spread:.55, r:.024},
+    finlets:{n:4, u0:.66, u1:.88, len:.020},              // 참치의 표식
+    base:[.08,.17,.42], edge:[.78,.83,.89], fin:[.14,.22,.40],
+    finletCol:[.85,.68,.20],                              // 토막지느러미만 노랑
+    stripes:{n:0},
+    approachPlan:[{style:'drift', until:4.5}, {style:'spiral', until:1.5}, {style:'hesitate'}],
+    band:[.5,.95], count:[1,1], turn:110, approach:0.5,
+    waveAmp:1.75, waveFreq:0.98, finRipple:0.013, finRate:1.5, bank:0.40,
+    noticeR:3.2, mvp:true
+  },
+
+  /* ── 가상 어종 3종 — 타입 계층 시험용 ────────────────────── */
+
+  // ① Lane 을 잡어와 공유. 같은 법칙, 완전히 다른 물고기가 되나?
+  needle: {
+    name:'은빛 학공치', path:'lane', P:{speed:2.5, amp:0.16, period:7.0},
+    L:0.88, wmax:0.040, hmax:0.050,
+    wprof:[[0,0],[.10,.30],[.26,.62],[.44,.92],[.60,1],[.76,.84],[.90,.48],[1,.13]],
+    hprof:[[0,0],[.10,.36],[.26,.68],[.44,.94],[.60,1],[.76,.88],[.90,.54],[1,.16]],
+    tail:{len:.20, spread:.13, notch:.45, cant:.03},
+    pect:{u0:.38, u1:.51, len:.058, sweep:.48},
+    dorsal:{u0:.52, u1:.72, h:.038}, eye:{u:.24, spread:.55, r:.020},
+    base:[.42,.50,.58], edge:[.84,.88,.92], fin:[.50,.58,.66], stripes:{n:0},
+    approachPlan:[{style:'dash'}],
+    school:{n:[2,4], r:0.75, solo:0.55},
+    band:[.05,.35], count:[2,3], turn:240, approach:3.2,
+    waveAmp:0.45, waveFreq:2.2, finRipple:0.008, finRate:2.6, bank:0.50, noticeR:3.0
+  },
+
+  // ② 무리 × Hover-Dash. 변형자가 다른 법칙 위에 얹히나? ← 제일 날카로운 시험
+  minnow: {
+    name:'노란 피라미', path:'hover',
+    P:{hoverT:[1.1,2.4], dashT:0.35, dashDist:[0.7,1.3], homeR:1.8,
+       drift:0.16, minR:0.75},
+    school:{n:[6,9], r:0.85, solo:0.20},
+    L:0.34, wmax:0.045, hmax:0.052,
+    wprof:[[0,0],[.06,.30],[.18,.64],[.34,.94],[.48,1],[.64,.90],[.80,.58],[.92,.30],[1,.12]],
+    hprof:[[0,0],[.06,.36],[.18,.70],[.34,.96],[.48,1],[.64,.92],[.80,.62],[.92,.34],[1,.14]],
+    tail:{len:.28, spread:.20, notch:.40, cant:.04},
+    pect:{u0:.31, u1:.43, len:.065, sweep:.46},
+    dorsal:{u0:.40, u1:.62, h:.050}, eye:{u:.20, spread:.58, r:.030},
+    base:[.72,.62,.20], edge:[.94,.90,.56], fin:[.66,.58,.24], stripes:{n:0},
+    approachPlan:[{style:'direct'}],
+    band:[.30,.80], count:[1,1], turn:330, approach:3.4,
+    jet:true, bank:0.50, finRipple:0.009, finRate:2.5,
+    waveAmp:0.7, waveFreq:2.6, noticeR:2.4
+  },
+
+  // ③ Loop 를 대물과 공유. 8자 파라미터만으로 다른 물고기가 되나?
+  disc: {
+    name:'청록 접시고기', path:'loop', P:{a:1.7, b:1.1, period:5.5},
+    L:0.66, wmax:0.255, hmax:0.150,
+    wprof:[[0,0],[.05,.55],[.14,.85],[.28,1],[.50,1],[.68,.88],[.82,.58],[.92,.30],[1,.12]],
+    hprof:[[0,0],[.05,.58],[.14,.86],[.28,1],[.50,1],[.68,.88],[.82,.60],[.92,.32],[1,.14]],
+    tail:{len:.20, spread:.19, notch:.32, cant:.05},
+    pect:{u0:.26, u1:.41, len:.098, sweep:.38},
+    dorsal:{u0:.42, u1:.68, h:.050}, eye:{u:.155, spread:.58, r:.028},
+    base:[.14,.52,.52], edge:[.56,.86,.84], fin:[.18,.46,.48],
+    stripes:{n:4, u0:.14, u1:.78, amt:.30, w:.30},
+    approachPlan:[{style:'spiral', until:1.0}, {style:'direct'}],
+    band:[.35,.90], count:[1,2], turn:160, approach:2.0,
+    waveAmp:0.8, waveFreq:1.2, finRipple:0.012, finRate:2.0, bank:0.44, noticeR:2.8
+  }
+};
+const ORDER = ['anchovy','needle','salmon','minnow','mahi','squid','disc','tuna'];
+const MVP = ORDER.filter(k => SPECIES[k].mvp);
+
+/* ── 메시 생성 — fishgen.py 의 build_fish 이식 ──────────────────── */
+const RINGS = 34, SEG = 20;
+// 꼬리 정점의 aU 가 1을 넘으므로(끝일수록 크게 휨) 명목 진폭을 그대로 쓰면 과하다.
+// 기획서 §6-1 의 WAVE_K 와 같은 역할.
+const WAVE_K = 0.40;
+function interp(u, pts){
+  for (let i = 0; i < pts.length - 1; i++){
+    const [u0,v0] = pts[i], [u1,v1] = pts[i+1];
+    if (u <= u1){ const t = u1===u0 ? 0 : (u-u0)/(u1-u0); return v0 + (v1-v0)*clamp(t,0,1); }
+  }
+  return pts[pts.length-1][1];
+}
+function hash01(i,j){
+  let h = (i*374761393 + j*668265263) ^ 0x5bf03635;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function buildGeometry(sp){
+  const pos = [], col = [], us = [], sds = [], rps = [], idx = [];
+  const L = sp.L, wmax = sp.wmax, hmax = sp.hmax, XL = L * 0.80;
+
+  // sd = 요소별 시드(0..1). 몸통은 0 — 몸통이 제멋대로 흔들리면 안 된다.
+  // 다리·지느러미처럼 '따로 노는' 부속만 0 이 아닌 값을 받는다.
+  // rp = 리플 좌표. 지느러미 막의 '바깥쪽 정도'(밑동 0, 가장자리 1).
+  const push = (x,y,z,u,c,sd,rp) => { pos.push(x,y,z); us.push(u); sds.push(sd||0);
+                                      rps.push(rp||0); col.push(c[0],c[1],c[2]); };
+
+  // 몸통 링
+  for (let i = 0; i <= RINGS; i++){
+    const u = i / RINGS;
+    const w = interp(u, sp.wprof) * wmax;
+    const h = interp(u, sp.hprof) * hmax;
+    for (let j = 0; j < SEG; j++){
+      const a = j / SEG * TAU;
+      const t = Math.max(0, Math.sin(a));          // 1 = 등마루, 0 = 옆구리
+      const shade = Math.pow(t, 0.42);
+      let c = [0,1,2].map(k => sp.edge[k] + (sp.base[k]-sp.edge[k]) * shade);
+      const st = sp.stripes;
+      if (st.n && u >= st.u0 && u <= st.u1){
+        const p = (u - st.u0) / (st.u1 - st.u0) * st.n;
+        const band = Math.abs((p % 1) - 0.5) * 2;
+        if (band > 1 - st.w){ const k2 = st.amt * shade; c = c.map(v => v * (1-k2)); }
+      }
+      if (sp.spots && hash01(i>>1, j>>1) > 0.62 && t > 0.35) c = c.map(v => v * 0.55);
+      push(Math.cos(a)*0 + u*XL, Math.cos(a)*w, Math.sin(a)*h, u, c);
+    }
+  }
+  for (let i = 0; i < RINGS; i++)
+    for (let j = 0; j < SEG; j++){
+      const a = i*SEG + j, b = i*SEG + (j+1)%SEG;
+      const c = (i+1)*SEG + (j+1)%SEG, d = (i+1)*SEG + j;
+      idx.push(a,b,c, a,c,d);
+    }
+
+  // 주둥이 / 미병 마감
+  [[0,0],[RINGS,1]].forEach(([ring, isTail]) => {
+    const cx = isTail ? XL : -0.02*L, u = isTail ? 1 : 0;
+    const ci = pos.length/3;
+    push(cx, 0, 0, u, sp.base);
+    for (let j = 0; j < SEG; j++){
+      const a = ring*SEG + j, b = ring*SEG + (j+1)%SEG;
+      if (isTail) idx.push(ci, a, b); else idx.push(ci, b, a);
+    }
+  });
+
+  // 면 헬퍼 — 다각형을 삼각부채로
+  const poly = (pts, c, sd) => {
+    const s = pos.length/3;
+    pts.forEach(p => push(p[0], p[1], p[2], p[3], c, sd, p[4]));
+    for (let k = 1; k < pts.length-1; k++) idx.push(s, s+k, s+k+1);
+  };
+
+  // 다리 다발 — 오징어처럼 몸통 뒤에 여러 가닥이 끌려가는 형태.
+  // 꼬리와 마찬가지로 u 를 1 이상으로 줘서 끝일수록 크게 흔들리게 한다.
+  if (sp.arms){
+    const am = sp.arms, xb = XL - L*0.015, pw = interp(1, sp.wprof)*wmax;
+    // ★ 다리를 분절한다. 예전엔 밑동-끝 쿼드 한 장이라 **휠 수가 없고 꺾이기만** 했다.
+    //   그래서 8가닥이 갈퀴처럼 보였다. 분절이 있어야 파동이 다리를 타고 흐른다.
+    const SEGA = am.seg ?? 5;
+    for (let a = 0; a < am.n; a++){
+      const t = (a/(am.n-1))*2 - 1;
+      const ang = t * am.spread;
+      const long = (a === 0 || a === am.n-1) ? 1.85 : 1;          // 촉완 2개는 길다
+      const len = am.len * L * long * (0.74 + 0.26*(1-Math.abs(t)*0.8));
+      const by = t * pw * 0.70, hw0 = am.w * L * (long > 1 ? 0.72 : 1);
+      const club = long > 1;                       // 촉완은 끝에 곤봉(흡반뭉치)이 있다
+      // 바깥 다리일수록 지렛대가 길어 더 끌린다
+      const uEnd = 1 + am.len*long*1.15*(0.82 + 0.30*Math.abs(t));
+      // 촉완은 길어서 분절이 더 필요하다 — 같은 수면 굽이가 안 잡힌다
+      const nseg = long > 1 ? SEGA + 4 : SEGA;
+      // ★ 다리마다 다른 위상. u 만으로 어긋내면 좌우 대칭이라 여전히 함께 움직인다.
+      const seed = hash01(a*7 + 3, 11);
+      const rows = [];
+      for (let k = 0; k <= nseg; k++){
+        const f = k / nseg;
+        // 끝으로 갈수록 가늘게. 촉완만 끝에서 다시 굵어진다 — 이게 있어야
+        // 8+2 가 '길이만 다른 같은 것'이 아니라 다른 기관으로 읽힌다.
+        let hw = hw0 * (1 - 0.72*f*f);
+        if (club) hw *= 1 + 2.1*Math.exp(-Math.pow((f-0.88)/0.11, 2));
+        rows.push(pos.length/3);
+        push(xb + Math.cos(ang)*len*f, by + Math.sin(ang)*len*f - hw, -0.004*f,
+             1 + (uEnd-1)*f, sp.fin, seed);
+        push(xb + Math.cos(ang)*len*f, by + Math.sin(ang)*len*f + hw, -0.004*f,
+             1 + (uEnd-1)*f, sp.fin, seed);
+      }
+      for (let k = 0; k < nseg; k++){
+        const A = rows[k], B = rows[k+1];
+        idx.push(A, A+1, B+1,  A, B+1, B);
+      }
+    }
+  }
+  // 꼬리 — 실제로는 수직이라 위에서 보면 선이다. 가독성을 위해 눕힌다(의도적 거짓말).
+  // u 를 1 이상으로 줘서 휨이 꼬리 끝에서 가장 크게 나오도록 한다.
+  if (!sp.arms){
+  const tl = sp.tail, xb = XL - L*0.02, xe = XL + tl.len*L;
+  const pw = interp(1, sp.wprof) * wmax * 0.95;
+  const uT = 1 + tl.len*1.15, uN = 1 + tl.len*0.5;
+  poly([[xb, pw, 0, 1], [xe, tl.spread*L, tl.cant*L, uT],
+        [xe - tl.notch*tl.len*L, 0, 0, uN],
+        [xe, -tl.spread*L, tl.cant*L, uT], [xb, -pw, 0, 1]], sp.fin);
+  }
+
+  // 눈 — 링 정점에 칠하면 해상도에 눌려 각진다. 작은 원반을 얹는다.
+  // ⚠️ 원반을 표면 법선에 맞춰 세우면 위에서 볼 때 몸통에 잘려 초승달이 된다.
+  //    탑다운이므로 위로 눕히고, 국소 단면의 최고점 위에 올린다.
+  if (sp.eye){
+    const ey = sp.eye;
+    const we = interp(ey.u, sp.wprof) * wmax, he = interp(ey.u, sp.hprof) * hmax;
+    const iris = sp.edge.map(c => Math.min(1, c*1.06 + 0.10));
+    const baseR = Math.min(ey.r * L, we * 0.62);
+    for (const sgn of [1, -1]){
+      const ae = Math.PI/2 - sgn * ey.spread;
+      const ex = ey.u * XL, eyv = Math.cos(ae) * we, ez = he + 0.012 * L;
+      // 동공 → 홍채링 → 하이라이트. 하이라이트가 없으면 '눈'이 아니라 '반점'으로 읽힌다.
+      for (const [rm, col, off] of [[ey.ring ?? 1.30, iris, 0], [1.0, [.09,.10,.12], 0],
+                                    [0.34, [.93,.95,.96], 0.42]]){
+        const cx = ex + baseR*off*0.35, cy = eyv - sgn*baseR*off, cz = ez + 0.0011*L*(1-rm);
+        const pts = [];
+        for (let i = 0; i < 12; i++){
+          const th = i/12 * TAU;
+          pts.push([cx + Math.cos(th)*baseR*rm, cy + Math.sin(th)*baseR*rm, cz, ey.u]);
+        }
+        poly(pts, col);
+      }
+    }
+  }
+
+  // 가슴지느러미 / 외투막 지느러미
+  // ⚠️ 밑동을 '점 하나'로 두면 몸통에서 나오는 부분이 서브픽셀로 얇아져서
+  //    떨어져 붙은 것처럼 보인다. 반드시 **밑동을 몸통을 따라가는 선분**으로 둘 것.
+  // ★ 삼각형 한 장이면 **물결칠 수가 없다.** 오징어 외투막 지느러미는 길게 붙은
+  //   능선이고 실제로는 끊임없이 파도친다 — 이게 안 움직이면 아무리 다리를 흔들어도
+  //   '그림이 떠다니는' 느낌이 남는다. 밑동을 따라 분절한다.
+  const pc = sp.pect, NF = pc.seg ?? 3;
+  for (const sgn of [1,-1]){
+    const rows = [];
+    for (let i = 0; i <= NF; i++){
+      const f = i/NF;
+      const u = pc.u0 + (pc.u1-pc.u0)*f;
+      const prof = Math.sin(Math.PI*f);              // 가운데가 가장 넓다
+      const wR = interp(u, sp.wprof)*wmax*0.80;      // 밑동은 몸 안쪽(§2-3)
+      const wE = interp(u, sp.wprof)*wmax + pc.len*L*prof;
+      rows.push(pos.length/3);
+      push(u*XL,                          sgn*wR,  0,      u, sp.fin, 0, 0);
+      push(u*XL + pc.len*L*pc.sweep*prof, sgn*wE, -0.015,  u, sp.fin, 0, prof);
+    }
+    for (let i = 0; i < NF; i++){
+      const A = rows[i], B = rows[i+1];
+      idx.push(A, A+1, B+1,  A, B+1, B);
+    }
+  }
+
+  // 토막지느러미(finlet) — 고등어·참치의 등/배 뒤쪽에 늘어선 작은 삼각형들.
+  // 위에서 볼 때 **톱니처럼 늘어선 실루엣**이라 어종 식별에 크게 기여한다.
+  if (sp.finlets){
+    const fl = sp.finlets;
+    for (let i = 0; i < fl.n; i++){
+      const u  = fl.u0 + (fl.u1 - fl.u0) * (i/(fl.n-1));
+      const w  = interp(u, sp.wprof) * wmax;
+      const ln = fl.len * L * (1 - 0.35*(i/(fl.n-1)));   // 뒤로 갈수록 작아진다
+      // ⚠️ 뾰족한 삼각형으로 두면 **가시가 줄지어 난 것**처럼 보인다.
+      //   낮고 넓은 부채꼴(가리비)이어야 '작은 지느러미'로 읽힌다.
+      [1,-1].forEach(sg => poly([
+        [u*XL - ln*0.35, sg*w*0.86,        0.002, u],
+        [u*XL + ln*0.30, sg*(w + ln*0.30), 0.000, u],
+        [u*XL + ln*1.15, sg*(w + ln*0.22), 0.000, u],
+        [u*XL + ln*1.55, sg*w*0.80,        0.002, u]], sp.finletCol ?? sp.fin, 0));
+    }
+  }
+
+  // 등지느러미 — 얇은 판은 위에서 '선'으로 보여 흉터처럼 읽힌다. 낮은 능선으로.
+  const dr = sp.dorsal, N = 8;
+  const ridgeCol = sp.base;   // 등마루와 같은 색이라야 융기로 읽힌다
+  for (let i = 0; i < N; i++){
+    const ua = dr.u0 + (dr.u1-dr.u0)*(i/N), ub = dr.u0 + (dr.u1-dr.u0)*((i+1)/N);
+    const bump = k => Math.pow(Math.sin(Math.PI*k), 0.7);
+    const za = interp(ua, sp.hprof)*hmax*0.92 + dr.h*L*bump(i/N);
+    const zb = interp(ub, sp.hprof)*hmax*0.92 + dr.h*L*bump((i+1)/N);
+    const ba = interp(ua, sp.wprof)*wmax*0.30*bump(i/N) + 0.004;
+    const bb = interp(ub, sp.wprof)*wmax*0.30*bump((i+1)/N) + 0.004;
+    const fa = interp(ua, sp.hprof)*hmax*0.86, fb = interp(ub, sp.hprof)*hmax*0.86;
+    [1,-1].forEach(s => poly([
+      [ua*XL, 0, za, ua], [ub*XL, 0, zb, ub],
+      [ub*XL, s*bb, fb, ub], [ua*XL, s*ba, fa, ua]], ridgeCol));
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color',    new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aU',       new THREE.Float32BufferAttribute(us, 1));
+  g.setAttribute('aSeed',    new THREE.Float32BufferAttribute(sds, 1));
+  g.setAttribute('aRip',     new THREE.Float32BufferAttribute(rps, 1));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // 회전 중심을 몸 가운데로 (스폰 위치가 머리 끝이 되지 않도록)
+  g.translate(-XL*0.45, 0, 0);
+  // ⚠️ 생성은 머리가 -X 다. rotation.z = ang 가 +X 를 진행 방향에 맞추므로
+  //    이대로 두면 꼬리가 앞장선다. 정회전(반사 아님)이라 감기·법선은 그대로.
+  g.rotateZ(Math.PI);
+  return g;
+}
+
+
+/* ── 접근 방식 ───────────────────────────────────────────────────
+   "목표가 생겼을 때 어떻게 다가가는가"를 조립 가능한 단계로 나눈다.
+   각 방식은 매 프레임 (조준 각도 · 속도 · 최소 선회 반경 배율)만 돌려주고,
+   실제 이동은 공통 코드가 한다 — 그래야 어떤 조합에서도 '선회'가 보장된다.
+
+   enter(f, sp, T)          단계 진입 시 1회
+   step(f, dt, sp, T, d)    → {aim, speed, rBL}
+*/
+const APPROACH = {
+  direct: { name:'직행', desc:'목표를 향해 최단으로. 기본값.',
+    step(f, dt, sp, T, d){
+      return { aim: Math.atan2(T.y-f.y, T.x-f.x), speed: sp.approach, rBL: 1.0 };
+    }},
+
+  dash: { name:'돌진', desc:'빠르게 밀고 들어온다. 잡어답다.',
+    step(f, dt, sp, T, d){
+      return { aim: Math.atan2(T.y-f.y, T.x-f.x), speed: sp.approach*1.9, rBL: 0.85 };
+    }},
+
+  drift: { name:'궤도 유지', desc:'하던 대로 헤엄치면서 조금씩 목표 쪽으로 밀려온다.',
+    step(f, dt, sp, T, d){
+      // 목표를 정면으로 보지 않는다. 지금 가던 방향에서 조금씩만 튼다.
+      const toT = Math.atan2(T.y-f.y, T.x-f.x);
+      return { aim: f.ang + wrapPi(toT - f.ang) * 0.34, speed: sp.approach*0.88, rBL: 1.8 };
+    }},
+
+  wary: { name:'조심', desc:'다가오다 멈칫, 다시 다가온다.',
+    enter(f){ f.aq.t = 0; },
+    step(f, dt, sp, T, d){
+      f.aq.t += dt;
+      const on = (f.aq.t % 1.7) < 0.75;              // 갔다 섰다
+      return { aim: Math.atan2(T.y-f.y, T.x-f.x),
+               speed: sp.approach * (on ? 1.55 : 0.35), rBL: 1.2 };
+    }},
+
+  spiral: { name:'선회 접근', desc:'곧장 가지 않고 옆으로 스쳐 지나간다. 지나칠 때마다 더 가깝게, 방향을 바꿔가며.',
+    // ⚠️ 반경을 시간으로 줄이는 '원 궤도'는 물고기가 아니라 드론으로 읽힌다.
+    //    실제 물고기는 미끼를 곧장 향하지 않고 옆으로 지나쳤다가, 돌아서 더 가깝게 다시 온다.
+    //    그래서 '패스(pass)' 단위로 짠다 — 지나칠 때마다 이격거리를 줄인다.
+    enter(f, sp, T){
+      f.aq.side = Math.random() < 0.5 ? 1 : -1;
+      f.aq.off  = Math.max(1.3*sp.L, Math.hypot(T.x-f.x, T.y-f.y) * 0.42);  // 스쳐가는 거리
+      f.aq.pass = 0;
+      f.aq.arm  = false;      // 목표를 앞에 두고 있는 상태여야 '지나침'을 셀 수 있다
+      f.aq.brk  = 0;          // 지나친 직후 잠깐 그대로 흘러가는 시간
+      f.aq.wob  = rnd(0, TAU);
+    },
+    step(f, dt, sp, T, d){
+      const toT = Math.atan2(T.y-f.y, T.x-f.x);
+      const front = Math.cos(wrapPi(toT - f.ang));       // +1 정면, -1 뒤
+
+      if (front > 0.55) f.aq.arm = true;
+      else if (f.aq.arm && front < 0.15){                 // 옆으로 스쳐 지나갔다
+        f.aq.arm  = false;
+        f.aq.pass++;
+        f.aq.off  = Math.max(0.22*sp.L, f.aq.off * 0.50); // 다음엔 더 가깝게
+        f.aq.brk  = rnd(0.30, 0.65);                      // 잠깐 그대로 흘러간다
+        if (Math.random() < 0.55) f.aq.side *= -1;        // 반대로 돌아오기도
+      }
+
+      // 지나친 직후 — 바로 꺾지 않고 관성으로 흘렀다가 돌아선다
+      if (f.aq.brk > 0){
+        f.aq.brk -= dt;
+        return { aim: f.ang, speed: sp.approach*1.05, rBL: 2.2 };
+      }
+
+      // 마지막엔 그냥 들어간다. 안 그러면 영원히 주위만 돈다.
+      if (f.aq.off <= 0.30*sp.L || f.aq.pass >= 4)
+        return { aim: toT, speed: sp.approach*1.25, rBL: 0.8 };
+
+      // 목표 '옆'을 겨눈다.
+      // ⚠️ 여기서 이격을 거리에 비례해 깎으면 안 된다. 그러면 조준각이 늘 정면 쪽이라
+      //    물고기가 목표를 영영 지나치지 못하고, 패스가 한 번도 성립하지 않는다.
+      const off = f.aq.off;
+      const px = T.x + Math.cos(toT + f.aq.side*Math.PI/2)*off;
+      const py = T.y + Math.sin(toT + f.aq.side*Math.PI/2)*off;
+      const spd = sp.approach * (0.85 + 0.45*Math.min(1, d/(3.2*sp.L)));
+      return { aim: Math.atan2(py-f.y, px-f.x) + Math.sin(now*0.8 + f.aq.wob)*0.08,
+               speed: spd, rBL: 1.0 };
+    }},
+
+  hesitate: { name:'눈치보기', desc:'근처에서 서성이다 확 낚아챈다.',
+    enter(f, sp){ f.aq.hold = rnd(0.9, 2.2); f.aq.snap = 0; f.aq.side = Math.random()<0.5?1:-1; },
+    step(f, dt, sp, T, d){
+      const toT = Math.atan2(T.y-f.y, T.x-f.x);
+      if (f.aq.snap > 0){                              // 낚아채는 중
+        f.aq.snap -= dt;
+        return { aim: toT, speed: sp.approach*2.8, rBL: 0.6 };
+      }
+      if (d < 1.25){
+        f.aq.hold -= dt;
+        if (f.aq.hold <= 0) f.aq.snap = 0.75;
+        // 서성임 — 목표를 곁눈질하며 옆으로 흐른다
+        return { aim: toT + f.aq.side * (0.75 + Math.sin(now*1.6 + f.phase)*0.25),
+                 speed: sp.approach*0.30, rBL: 1.1 };
+      }
+      return { aim: toT, speed: sp.approach*0.92, rBL: 1.3 };
+    }}
+};
+const APPROACH_KEYS = Object.keys(APPROACH);
+
+/* 최소 선회 반경에서 선회율 상한을 뽑는다.
+   ω = v / r. 이걸 안 쓰고 각속도를 직접 주면, 느린 물고기가 제자리에서 돈다.
+   (기존 notice 는 반경 0.03유닛 = 몸길이의 3.5% 였다 — 회전이지 선회가 아니다) */
+function turnCap(sp, speed, rBL, d){
+  // ⚠️ 근접 보정 — 기획서 §11 CloseTurnBoost.
+  //    최소 선회 반경이 도착 판정 거리보다 크면 물고기가 목표를 '영원히 맴돈다'.
+  //    대물은 반경 0.96유닛인데 도착 판정이 0.35유닛이라 direct 로도 절대 못 닿았다.
+  //    가까울수록 반경을 조여준다. 마지막 달려드는 동작이기도 하다.
+  let bl = rBL;
+  if (d !== undefined){
+    const t = clamp(d / (2.2 * sp.L), 0, 1);
+    bl *= UI.closeBoost + (1 - UI.closeBoost) * (t*t*(3-2*t));
+  }
+  const r = Math.max(0.04, bl * UI.minRadius * sp.L);
+  return Math.min(sp.turn, speed / r * (180/Math.PI));
+}
+
+/* 어종의 접근 조합에서 현재 거리에 맞는 단계를 고른다 */
+function stageFor(sp, d){
+  const plan = sp.approachPlan;
+  for (let i = 0; i < plan.length; i++){
+    if (plan[i].until === undefined || d > plan[i].until) return i;
+  }
+  return plan.length - 1;
+}
+
+/* ── 셰이더 ──────────────────────────────────────────────────────
+   휨은 여기서 전부 일어난다. 유니티로 옮길 때 이 vert 를 그대로 쓰면 된다. */
+const VERT = `
+attribute float aU;
+attribute float aSeed;                 // 요소별 난수 0..1 (몸통은 0)
+attribute float aRip;                  // 지느러미 막의 바깥쪽 정도 0..1 (그 외 0)
+varying vec3 vCol; varying vec3 vNw; varying vec3 vNv;
+uniform float uAmp, uPhase, uTurn, uLen, uOn, uLag, uExp, uHinge;
+uniform float uSpread, uJet, uRoll, uRip, uRipW, uRipF;
+uniform float uTime, uDrift, uTurnLag, uArcBody, uArmSwing, uArmTuck;
+
+uniform float uPivot;          // 몸이 좌우로 흔들릴 때의 회전 중심(무게중심 근처)
+
+float swimAt(float uu, float sd){
+  // uHinge = 유영 파동이 시작되는 지점. 0 이면 주둥이부터(물고기).
+  // ★ 오징어처럼 몸통이 뻣뻣한 종은 이걸 안 주면 '주둥이를 축으로 몸 전체가
+  //   메트로놈처럼 흔들린다'. 외투막은 강체이고 관절은 다리 밑동에만 있다.
+  float b    = max(uu - uHinge, 0.0);
+  // ★ 다리마다 위상과 진폭을 어긋낸다. u 로만 어긋내면 좌우가 대칭이라
+  //   8가닥이 여전히 한 몸으로 움직여 '갈퀴'로 보인다.
+  float ph   = uPhase + sd * uSpread;
+  float gain = 1.0 + (sd - 0.5) * 0.62 * step(0.001, sd);
+  return uAmp * pow(b, uExp) * sin(ph - uu * uLag) * gain;
+}
+
+vec2 bendAt(float u, float sd){
+  float uu = max(u, 0.0);
+
+  // ── 유영 ────────────────────────────────────────────────────
+  // ★ PIVOT 지점의 변위를 빼서 **몸 중심을 고정**한다. 안 빼면 주둥이가 축이 되어
+  //   몸 전체가 좌우로 까닥인다. 빼면 머리가 꼬리와 **반대로** 살짝 돌아가는데,
+  //   그게 실제 물고기의 움직임이다(머리 요, head yaw).
+  float swim = swimAt(uu, sd) - swimAt(uPivot, 0.0);
+
+  // ── 선회 호 ─────────────────────────────────────────────────
+  // uArcBody = 몸통이 선회에 참여하는 정도. 오징어 외투막은 강체라 거의 0.
+  // ★ 부속(u>1)은 **지금이 아니라 조금 전의 선회**를 따라온다. 현재 값에
+  //   즉시 비례하면 촉완이 몸에 용접된 '수수깡'이 된다.
+  float trailW = smoothstep(0.98, 1.35, uu);
+  float tv     = mix(uTurn, uTurnLag, trailW);
+  float arc    = tv * (uArcBody * pow(min(uu, 1.0), 1.9) + max(uu - 1.0, 0.0) * 0.5);
+
+  // ── 물살에 흩날림 ───────────────────────────────────────────
+  // 시간 기반이라 **헤엄 속도와 무관**하다. 가만히 떠 있어도 다리는 하늘거린다.
+  // aSeed 가 0 인 몸통·지느러미는 영향 없음 — 다리/촉완만 흩날린다.
+  // ★ 공간 파수(-uu*3.4)가 없으면 다리가 **휘지 않고 통째로 기울기만** 한다.
+  //   그게 '수수깡' 의 정체다. 파수가 있어야 한 가닥 안에서 S 자로 말린다.
+  float da  = max(uu - 1.0, 0.0);
+  float isA = step(0.001, sd);                    // 다리/촉완만
+  float drift = uDrift * isA * da
+              * ( sin(uTime * 0.63 + sd * 17.0 - uu * 3.4)
+                + 0.55 * sin(uTime * 1.07 + sd * 29.0 - uu * 6.1) );
+  // ★ 몸의 움직임에 대한 관성 반응. 런타임에서 스프링-댐퍼로 적분한 값이라
+  //   가속하면 뒤로 쏠리고, 멈추면 앞으로 넘어갔다가 **흔들리며 잦아든다**.
+  //   시간 기반 흩날림만 있으면 헤엄을 치든 멈춰 있든 똑같아서 '정지한 느낌'이 난다.
+  //   가닥마다 위상을 조금 어긋내야 다발이 통째로 움직이지 않는다.
+  float swing = uArmSwing * isA * da * (0.72 + 0.56 * sd)
+              * (1.0 - 0.28 * sin(uu * 4.1 + sd * 9.0));
+
+  return vec2((swim + arc + drift + swing) * uLen, 0.0);
+}
+void main(){
+  vCol = color;
+  vec3 p = position;
+  vec3 n = normal;
+  if (uOn > 0.5){
+    float u  = aU;
+    float uu = max(u, 0.0);
+
+    // ── 외투강 충전/분사 ─────────────────────────────────────
+    // uJet = 충전량 0..1. 부유 중 서서히 부풀고, 돌진 순간 확 꺼진다.
+    // 그래서 **돌진 전에 부푸는 게 보인다** — 예고 동작이 공짜로 생긴다.
+    // 몸통(uu<=1)에만 걸린다. 다리는 물을 담지 않는다.
+    // ⚠️ 진폭이 작으면 **있으나 없으나**다. ±17% 는 연못 배율에서 5px 라 안 보인다.
+    //    오징어는 실제로 외투막이 눈에 띄게 부풀었다 홀쭉해진다 — 과장해도 된다.
+    float mantle = 1.0 - smoothstep(0.86, 1.02, uu);
+    float fill   = (uJet - 0.5) * mantle;
+    p.yz *= 1.0 + fill * 0.86;          // 단면: 차면 통통, 뿜으면 홀쭉 (2.3배 차)
+    p.x  *= 1.0 - fill * 0.24;          // 뿜으면 길어진다(물을 밀어낸 만큼)
+
+    // ── 뱅킹 ────────────────────────────────────────────────
+    // 선회할 때 단면을 통째로 기울인다. 이게 없으면 아무리 잘 휘어도
+    // 위에서 볼 때 '납작한 종이'로 읽힌다.
+    float cr = cos(uRoll), sr = sin(uRoll);
+    p.yz = mat2(cr, -sr, sr, cr) * p.yz;
+    n.yz = mat2(cr, -sr, sr, cr) * n.yz;
+
+    // ── 다리 다발 오므리기 ───────────────────────────────────
+    // 빠를수록 유선형으로 모이고 느릴수록 벌어진다. 밑동은 안 건드려야
+    // 외투막에서 떨어져 보이지 않는다.
+    if (aSeed > 0.001)
+      p.y *= mix(1.0, uArmTuck, min(max(uu - 1.0, 0.0), 1.0));
+
+    // ── 지느러미 ─────────────────────────────────────────────
+    // 막의 바깥쪽일수록 크게, 밑동(aRip=0)은 안 움직인다 → 떨어져 보이지 않는다.
+    // uRipW = 공간 파수. 이 하나로 두 가지 전혀 다른 동작이 나온다:
+    //   uRipW 큼(11) → 파동이 막을 타고 흐른다   ... 오징어 외투막
+    //   uRipW 0     → 막 전체가 한 몸으로 앞뒤로 젓는다 ... 물고기 가슴지느러미
+    // ★ 젓는 박자를 꼬리 박자(uPhase)에서 떼어낸다. uPhase 는 속도에 결합돼 있어
+    //   빠른 물고기가 지느러미를 '손처럼' 파닥거리게 된다. 시간 기반으로 천천히.
+    p.x += uRip * aRip * sin(uTime * uRipF - uu * uRipW) * uLen;
+
+    // ── 휨 ──────────────────────────────────────────────────
+    float dy = bendAt(u, aSeed).x;
+    float du = 0.02;
+    float slope = -(bendAt(u+du, aSeed).x - dy) / (du * uLen * 0.80);
+    float a = atan(slope);
+    float ca = cos(a), sa = sin(a);
+    n = vec3(n.x*ca - n.y*sa, n.x*sa + n.y*ca, n.z);   // 접선 회전만큼 노멀도 돌린다
+    p.y += dy;
+  }
+  vNw = normalize(mat3(modelMatrix) * n);
+  vNv = normalize(normalMatrix * n);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}`;
+
+const FRAG = `
+precision mediump float;
+varying vec3 vCol; varying vec3 vNw; varying vec3 vNv;
+uniform vec3 uLight; uniform float uRim; uniform float uFlat; uniform vec3 uFlatCol;
+void main(){
+  if (uFlat > 0.5){ gl_FragColor = vec4(uFlatCol, 1.0); return; }
+  vec3 nw = normalize(vNw), nv = normalize(vNv);
+  if (!gl_FrontFacing){ nw = -nw; nv = -nv; }   // 얇은 지느러미의 뒷면도 제대로 받게
+  float ndl  = dot(nw, normalize(uLight)) * 0.5 + 0.5;
+  float band = ndl < 0.40 ? 0.82 : (ndl < 0.72 ? 0.96 : 1.08);
+  vec3 c = vCol * band;
+  float rim = 1.0 - abs(nv.z);
+  c = mix(c, c * 0.34, smoothstep(0.70, 1.0, rim) * uRim);
+  gl_FragColor = vec4(c, 1.0);
+}`;
+
+/* ── 씬 ─────────────────────────────────────────────────────────── */
+const cv = document.getElementById('cv');
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({canvas: cv, antialias: true});
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const cam = new THREE.OrthographicCamera(-W/2, W/2, H/2, -H/2, 0.1, 80);
+const camTarget = new THREE.Vector3(0, 0, 0);
+
+// 수면
+const water = new THREE.Mesh(
+  new THREE.PlaneGeometry(W, H),
+  new THREE.ShaderMaterial({
+    uniforms:{uTime:{value:0}},
+    vertexShader:`varying vec2 vUv; void main(){ vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader:`precision mediump float; varying vec2 vUv; uniform float uTime;
+      void main(){
+        vec2 p = vUv * vec2(16.0, 9.0);
+        vec3 deep = vec3(0.038,0.118,0.163), shal = vec3(0.098,0.290,0.353);
+        vec3 c = mix(deep, shal, smoothstep(0.0, 1.0, vUv.y));
+        float caus = sin(p.x*1.7 + uTime*0.33) * sin(p.y*2.1 - uTime*0.26)
+                   + 0.6 * sin(p.x*3.1 - uTime*0.19 + p.y*1.3);
+        c += vec3(0.026,0.046,0.040) * smoothstep(0.5, 1.4, caus);
+        float v = distance(vUv, vec2(0.5)) ;
+        c *= 1.0 - smoothstep(0.42, 0.86, v) * 0.32;
+        gl_FragColor = vec4(c, 1.0);
+      }`
+  })
+);
+water.position.z = -0.02;
+scene.add(water);
+
+// 연못 바깥 — 기울였을 때 검은 띠가 아니라 '바깥'으로 읽혀야 한다
+const backdrop = new THREE.Mesh(
+  new THREE.PlaneGeometry(80, 80),
+  new THREE.MeshBasicMaterial({color:0x081113})
+);
+backdrop.position.z = -0.6;
+scene.add(backdrop);
+
+// 찌
+const bobber = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.11, 0.11, 0.02, 16),
+  new THREE.MeshBasicMaterial({color:0xE5A03A})
+);
+bobber.rotation.x = Math.PI/2; bobber.visible = false; bobber.position.z = 0.35;
+scene.add(bobber);
+const ring = new THREE.Mesh(
+  new THREE.RingGeometry(0.16, 0.185, 40),
+  new THREE.MeshBasicMaterial({color:0xE5A03A, transparent:true, opacity:0.6})
+);
+ring.visible = false; ring.position.z = 0.3;
+scene.add(ring);
+
+const GEOM = {};
+ORDER.forEach(k => GEOM[k] = buildGeometry(SPECIES[k]));
+const TRIS_PER = {};
+ORDER.forEach(k => TRIS_PER[k] = GEOM[k].index.count / 3);
+
+/* ── 개체 ───────────────────────────────────────────────────────── */
+let fish = [], now = 0, bob = null;
+const fishRoot = new THREE.Group(); scene.add(fishRoot);
+const trailRoot = new THREE.Group(); scene.add(trailRoot);
+
+function makeMaterial(){
+  return new THREE.ShaderMaterial({
+    uniforms:{
+      uAmp:{value:0.16}, uPhase:{value:0}, uTurn:{value:0}, uLen:{value:1}, uOn:{value:1},
+      uLag:{value:2.4}, uExp:{value:1.6}, uHinge:{value:0.0},
+      uSpread:{value:0.0}, uJet:{value:0.5}, uRoll:{value:0.0},
+      uRip:{value:0.0}, uRipW:{value:0.0}, uRipF:{value:2.2},
+      uTime:{value:0}, uDrift:{value:0.0}, uTurnLag:{value:0}, uArcBody:{value:1.0},
+      uArmSwing:{value:0}, uArmTuck:{value:1.0}, uPivot:{value:0.36},
+      uLight:{value:new THREE.Vector3(0.35, 0.55, 0.76)}, uRim:{value:1},
+      uFlat:{value:0}, uFlatCol:{value:new THREE.Color(0x000000)}
+    },
+    vertexShader:VERT, fragmentShader:FRAG, vertexColors:true, side:THREE.DoubleSide
+  });
+}
+
+function makeFish(key){
+  const sp = SPECIES[key];
+  const f = {
+    sp:key, state:'roam', t:0, x:0, y:0, px:0, py:0,
+    ang:rnd(0,TAU), phase:rnd(0,TAU), steerRate:0, speedNow:0,
+    size:rnd(0.92,1.08), stateT:0, cool:0, trail:[], aq:{}, aqStage:-1, aqKey:null,
+    orbT:0, breakOff:0,
+    vSm:0, turnSm:0, fSm:1, courseSm:null,
+    jet:0.5, roll:0, beat:1, effSm:0, vPrev:0, seed:Math.random(),
+    cst:0, cDir:1, cBend:0, fin:1, vAvg:1, turnLag:0, hoverMax:0,
+    armX:0, armV:0, armA:0, armTuck:1, armAmb:1, avx:0, avy:0, avtx:0, avty:0,
+    mood:null, moodN:0
+  };
+  PATHS[sp.path].init(f, sp.P, sp.band);
+  const p = PATHS[sp.path].pos(f, f.t, sp.P); f.x = p[0]; f.y = p[1]; f.px = f.x; f.py = f.y;
+
+  f.mesh = new THREE.Mesh(GEOM[key], makeMaterial());
+  f.mesh.material.uniforms.uLen.value = sp.L;
+  f.mesh.material.uniforms.uLag.value = sp.waveLag ?? 2.4;
+  f.mesh.material.uniforms.uExp.value = sp.waveExp ?? 1.6;
+  f.mesh.material.uniforms.uHinge.value = sp.waveHinge ?? 0.0;
+  f.mesh.material.uniforms.uSpread.value = sp.waveSpread ?? 0.0;
+  f.mesh.material.uniforms.uRipW.value = sp.finWave ?? 0.0;
+  f.mesh.material.uniforms.uRipF.value = sp.finRate ?? 2.2;
+  f.mesh.material.uniforms.uDrift.value = sp.armDrift ?? 0.0;
+  f.mesh.material.uniforms.uArcBody.value = sp.arcBody ?? 1.0;
+  f.mesh.scale.setScalar(f.size);
+  fishRoot.add(f.mesh);
+
+  f.shadow = new THREE.Mesh(GEOM[key], makeMaterial());
+  f.shadow.material.uniforms.uLen.value = sp.L;
+  f.shadow.material.uniforms.uLag.value = sp.waveLag ?? 2.4;
+  f.shadow.material.uniforms.uExp.value = sp.waveExp ?? 1.6;
+  f.shadow.material.uniforms.uHinge.value = sp.waveHinge ?? 0.0;
+  f.shadow.material.uniforms.uSpread.value = sp.waveSpread ?? 0.0;
+  f.shadow.material.uniforms.uRipW.value = sp.finWave ?? 0.0;
+  f.shadow.material.uniforms.uRipF.value = sp.finRate ?? 2.2;
+  f.shadow.material.uniforms.uDrift.value = sp.armDrift ?? 0.0;
+  f.shadow.material.uniforms.uArcBody.value = sp.arcBody ?? 1.0;
+  f.shadow.material.uniforms.uFlat.value = 1;
+  f.shadow.material.uniforms.uFlatCol.value = new THREE.Color(0x04141a);
+  f.shadow.material.transparent = true; f.shadow.material.opacity = 0.42;
+  f.shadow.material.depthWrite = false;
+  // ⚠️ z 를 눌러 납작하게. 3D 복제본을 그냥 두면 지느러미가 몸통을 뚫고 올라온다.
+  f.shadow.scale.set(f.size * 1.02, f.size * 1.02, 0.0001);
+  fishRoot.add(f.shadow);
+  return f;
+}
+
+/* 미사일 모형 — 각도 보간이 아니라 선회율 제한. 속도가 0에 가까워도 제자리 회전이 없다 */
+function steer(f, target, dt, omegaDeg){
+  const d = wrapPi(target - f.ang);
+  const max = omegaDeg * DEG * dt;
+  const step = clamp(d, -max, max);
+  f.ang += step;
+  return step / Math.max(dt, 1e-4);
+}
+function advance(f, speed, dt){ f.x += Math.cos(f.ang)*speed*dt; f.y += Math.sin(f.ang)*speed*dt; }
+
+/* 경로 복귀 — 경로 원점을 현재 위치에 다시 앵커한다(누적 가산 금지) */
+/* 다른 물고기(특히 무리)를 만나면 궤도를 꺾는다.
+   ★ 경로 함수를 건드리지 않고 **오프셋**으로 얹는다 — 놀람 오프셋과 같은 방식이라
+     Lane/Loop 의 `p = f(t)` 순수성(결정론)이 유지된다. §4-1. */
+function avoidVec(f, sp){
+  let ax = 0, ay = 0, n = 0;
+  const R = sp.L * 3.6;
+  for (const g of fish){
+    if (g === f) continue;
+    if (g.leaderRef === f || f.leaderRef === g || (f.leaderRef && f.leaderRef === g.leaderRef))
+      continue;                                     // 같은 무리끼리는 안 피한다
+    const dx = f.x - g.x, dy = f.y - g.y, d2 = dx*dx + dy*dy;
+    if (d2 > R*R || d2 < 1e-6) continue;
+    // 뒤에 있는 건 안 피한다 — 앞을 막은 것만 피한다
+    if (Math.cos(f.ang)*(-dx) + Math.sin(f.ang)*(-dy) < 0) continue;
+    const d = Math.sqrt(d2), gL = SPECIES[g.sp].L;
+    // ★ 우선순위 = 상대 크기. 큰 놈은 거의 안 비키고 작은 놈이 비킨다.
+    const yieldK = gL / (sp.L + gL);
+    const w = (1 - d/R) * yieldK / Math.max(d, 0.30);
+    ax += dx/d * w; ay += dy/d * w; n++;
+  }
+  // ★ 합이 아니라 **평균**. 합으로 두면 반경이 큰(=덩치 큰) 물고기가
+  //   이웃을 더 많이 보게 되어 **제일 많이 비키는** 역설이 생긴다.
+  return n ? [ax/n, ay/n] : null;
+}
+
+function reanchor(f){
+  const sp = SPECIES[f.sp];
+  f.fo = null; f.leaderRef = null;
+  PATHS[sp.path].anchor(f, sp.P);
+  f.courseSm = null;
+}
+
+/* 무리 — 어느 법칙 위에도 얹는다. 종 이름을 하드코딩하지 않는다. */
+function spawnGroup(key){
+  const sp = SPECIES[key];
+  const lead = makeFish(key); lead.leader = true; fish.push(lead);
+  const n = rndi(sp.school.n[0], sp.school.n[1]);
+  for (let i = 1; i < n; i++){
+    const m = makeFish(key);
+    m.leaderRef = lead;                       // 개체를 직접 가리킨다 (종 이름 검색 금지)
+    // ★ 랜덤 극좌표로 놓으면 두 마리가 같은 자리에 겹치는 걸 막을 방법이 없다.
+    //   실측 같은 종끼리 겹침 **60%**. 실제 물고기 떼도 열을 지어 간격을 유지한다.
+    //   → 어긋난 쐐기(V) 대형. 최소 간격이 구조적으로 보장된다.
+    const gap = sp.L * (sp.school.gap ?? 1.25);
+    const row = Math.ceil(i/2), side = (i % 2) ? 1 : -1;
+    m.fo = [-row*gap*0.80 + rnd(-0.07,0.07)*gap,
+             side*row*gap*0.58 + rnd(-0.07,0.07)*gap];
+    m.noise = [rnd(0,TAU), rnd(0,TAU)];
+    fish.push(m);
+  }
+}
+
+let ACTIVE = new Set(MVP);
+function reseed(){
+  fish.forEach(f => { fishRoot.remove(f.mesh); fishRoot.remove(f.shadow); });
+  fish = []; bob = null; bobber.visible = ring.visible = false;
+  for (const key of ORDER){
+    if (!ACTIVE.has(key)) continue;
+    const sp = SPECIES[key];
+    const n = rndi(sp.count[0], sp.count[1]);      // 무리 어종은 '무리 수'
+    for (let i = 0; i < n; i++){
+      // 무리 성향은 어종이 아니라 '그 개체'의 성질이다.
+      // 같은 소어라도 대부분 무리를 짓고 일부는 혼자 다닌다.
+      const solo = sp.school ? Math.min(1, (sp.school.solo ?? 0) * UI.soloK) : 1;
+      if (sp.school && Math.random() >= solo) spawnGroup(key);
+      else fish.push(makeFish(key));
+    }
+  }
+  refreshTrails();
+  document.getElementById('rFish').textContent = fish.length;
+  document.getElementById('rTri').textContent =
+    fish.reduce((s,f) => s + TRIS_PER[f.sp], 0).toLocaleString();
+}
+
+/* ── 갱신 ───────────────────────────────────────────────────────── */
+const UI = {
+  bend:true, amp:0.16, freq:1.0, turnK:0.85, speed:1.0,
+  jet:true, bank:true, glide:true, fin:true, cstart:true, armInertia:true, recenter:true, avoid:true, avoidK:5.5,
+  tilt:0, shadow:true, rim:true, wire:false, trail:false, headTrack:0.35, laneK:1.0,
+  slipCap:true, slipMax:14, smooth:true, laneT:1.0, minRadius:0.55, closeBoost:0.40, forceStyle:null, bobLife:1e9,
+  speedFit:true, fitK:0.85, soloK:1.0,
+  paused:false, forceTurn:0
+};
+
+function update(dt){
+  now += dt;
+  water.material.uniforms.uTime.value = now;
+
+  if (bob){
+    bob.t += dt;
+    ring.scale.setScalar(1 + Math.sin(now*2.4)*0.06);
+    if (bob.t > UI.bobLife){
+      bob = null; bobber.visible = ring.visible = false;
+      // ⚠️ 찌를 지우기 전에 이 상태들을 정리하지 않으면 다음 프레임에 bob.y 로 던진다
+      fish.forEach(f => {
+        if (f.state === 'notice' || f.state === 'interested'){
+          f.state = 'roam'; f.cool = 2; reanchor(f);
+        }
+      });
+    }
+  }
+
+  let maxTurn = 0;
+  for (const f of fish){
+    const sp = SPECIES[f.sp];
+    f.px = f.x; f.py = f.y;
+    if (f.cool > 0) f.cool -= dt;
+
+    if (f.state === 'roam'){
+      f.t += dt;
+      const P = PATHS[sp.path];
+      let p, follower = false;
+
+      if (f.fo && f.leaderRef && fish.includes(f.leaderRef)){
+        // 무리 개체 — 리더의 '머리 방향'을 기준으로 대형을 유지한다.
+        // ⚠️ 리더의 속도 벡터를 쓰면 안 된다. Hover 리더는 떠 있는 동안 속도가 0이라
+        //    대형이 각도 0으로 스냅한다. 이게 무리를 Lane 밖으로 못 내보내던 진짜 이유였다.
+        const lead = f.leaderRef, ca = Math.cos(lead.ang), sa = Math.sin(lead.ang);
+        p = [lead.x + f.fo[0]*ca - f.fo[1]*sa + Math.sin(now*0.7 + f.noise[0])*0.12,
+             lead.y + f.fo[0]*sa + f.fo[1]*ca + Math.sin(now*0.9 + f.noise[1])*0.12];
+        follower = true;
+      } else if (f.fo){
+        f.fo = null; f.leaderRef = null; f.leader = true; reanchor(f); p = [f.x, f.y];
+      } else {
+        if (P.tick) P.tick(f, dt, sp.P, sp);
+        p = P.pos(f, f.t, sp.P);
+      }
+      // ── 회피 오프셋 ──────────────────────────────────────────
+      // ⚠️ 예전엔 **적분 + 감쇠**였다. 피하면 멀어지고 → 감지가 끊기고 → 감쇠로
+      //    되돌아오고 → 다시 감지되는 **극한 순환(limit cycle)** 이 생긴다.
+      //    게다가 오프셋은 *위치*를 옮기는데 머리 방향은 위치 차분에서 나오므로,
+      //    작은 위치 떨림이 **큰 방향 떨림**으로 증폭된다 → '드드득'.
+      //    실측: 각가속도 16~18배, 만새기 선회 반전 1회 → 512회.
+      //    → 적분하지 말고 **목표를 향한 2단 저역통과**로 바꾼다. 넘어갈 수가 없다.
+      if (UI.avoid){
+        const a = avoidVec(f, sp);
+        const cap = sp.L * 0.85;
+        // 덩치가 클수록 관성이 커서 덜 밀린다
+        let tx = a ? a[0]*UI.avoidK/Math.max(0.5, sp.L) : 0;
+        let ty = a ? a[1]*UI.avoidK/Math.max(0.5, sp.L) : 0;
+        const tm = Math.hypot(tx, ty);
+        if (tm > cap){ tx *= cap/tm; ty *= cap/tm; }
+        f.avtx += (tx - f.avtx) * Math.min(1, dt*1.1);   // 목표부터 평활화(τ≈0.9s)
+        f.avty += (ty - f.avty) * Math.min(1, dt*1.1);
+        f.avx  += (f.avtx - f.avx) * Math.min(1, dt*0.9); // 그 다음 실제 오프셋
+        f.avy  += (f.avty - f.avy) * Math.min(1, dt*0.9);
+      } else {
+        f.avtx = f.avty = 0;
+        f.avx += (0 - f.avx) * Math.min(1, dt*2); f.avy += (0 - f.avy) * Math.min(1, dt*2);
+      }
+      f.x = p[0] + f.avx; f.y = p[1] + f.avy;
+
+      // 화면 밖 랩 — 목표 좌표를 직접 지정(누적 가산 금지). 랩하는 타입만.
+      if (P.wraps && !follower){
+        let nx = f.x, ny = f.y, moved = false;
+        if (f.x < -1.8){ nx = W+1.5; moved = true } else if (f.x > W+1.8){ nx = -1.5; moved = true }
+        if (f.y < -1.8){ ny = H+1.5; moved = true } else if (f.y > H+1.8){ ny = -1.5; moved = true }
+        if (moved){
+          // ⚠️ px/py 도 같이 옮겨야 한다. 안 옮기면 랩하는 프레임의 속도 벡터가
+          //    연못 폭만큼 튀고, 머리 방향이 그 한 프레임 동안 완전히 뒤집힌다.
+          //    속도는 6으로 클램프하지만 **방향은 클램프가 없다.**
+          f.lane.ox += nx-f.x; f.lane.oy += ny-f.y;
+          f.px += nx-f.x; f.py += ny-f.y;
+          f.x = nx; f.y = ny;
+        }
+      }
+
+      // 스스로 조향하는 타입(Hover)은 tick 이 이미 돌렸다. 추종자는 대형을 따라가므로 속도 기준.
+      if (follower || !P.steersItself){
+        const vx = f.x-f.px, vy = f.y-f.py, v = Math.hypot(vx,vy)/Math.max(dt,1e-4);
+        if (v > 0.02){
+          // 사행 궤도는 진행 '방향'이 초당 수십 도씩 흔들린다. 머리를 거기에 100% 붙이면
+          // 순항 중에도 좌우 38도씩 도리도리한다. 침로(저역통과)와 순간 방향을 나누고,
+          // 머리는 그 차이의 일부만 따라간다 — 진짜 선회는 침로가 옮겨가므로 그대로 따라간다.
+          const dirNow = Math.atan2(vy, vx);
+          if (f.courseSm === null) f.courseSm = dirNow;
+          f.courseSm = angLerp(f.courseSm, dirNow, Math.min(1, dt * 0.55));
+          let target = f.courseSm + wrapPi(dirNow - f.courseSm) * UI.headTrack;
+          // ⚠️ 위 감쇠만 두면 '진짜로 빨리 도는' 궤도(Loop)에서 침로가 못 따라가고,
+          //    머리가 진행 방향에서 크게 벌어진 채 고정된다 = 게걸음.
+          //    머리가 진행 방향에서 벗어날 수 있는 각도에 상한을 둔다.
+          if (UI.slipCap){
+            const off = wrapPi(target - dirNow), lim = UI.slipMax * DEG;
+            if (Math.abs(off) > lim) target = dirNow + Math.sign(off) * lim;
+          }
+          f.steerRate = steer(f, target, dt, sp.turn*2.5);
+          f.slip = Math.abs(wrapPi(dirNow - f.ang));
+        } else f.steerRate = 0;
+      }
+      // 찌 인지
+      if (bob && f.cool <= 0 && Math.hypot(bob.x-f.x, bob.y-f.y) < sp.noticeR){
+        f.state = 'notice'; f.stateT = 0;
+      }
+    }
+    else if (f.state === 'notice' && !bob){ f.state = 'roam'; f.cool = 2; reanchor(f); }
+    else if (f.state === 'interested' && !bob){ f.state = 'linger'; f.stateT = 0; f.lingerFor = rnd(1.2, 2.4); }
+    else if (f.state === 'notice'){
+      // 발견 = 급제동 + 몸을 트는 것. ⚠️ 제자리 회전이 아니다.
+      // 선회율을 최소 반경에서 뽑으므로, 감속해도 호를 그리며 돈다. 180° 돌아야 하면
+      // 이 0.30초 안에 다 못 돈다 — 나머지는 다음 단계에서 이어서 돈다. 그게 맞다.
+      f.stateT += dt;
+      const spd = Math.max(sp.approach*0.35, f.vSm*0.6);
+      f.steerRate = steer(f, Math.atan2(bob.y-f.y, bob.x-f.x), dt,
+                          turnCap(sp, spd, 0.9, Math.hypot(bob.x-f.x, bob.y-f.y)));
+      advance(f, spd, dt);
+      if (f.stateT >= 0.30){
+        f.state = 'interested'; f.stateT = 0;
+        f.aq = {}; f.aqStage = -1;
+      }
+    }
+    else if (f.state === 'interested'){
+      f.stateT += dt;
+      const T = bob, d = Math.hypot(T.x-f.x, T.y-f.y);
+      // 단계 전환 — 거리로 갈린다
+      const si = UI.forceStyle ? 0 : stageFor(sp, d);
+      const key = UI.forceStyle || sp.approachPlan[si].style;
+      if (si !== f.aqStage || f.aqKey !== key){
+        f.aqStage = si; f.aqKey = key; f.aq = {};
+        if (APPROACH[key].enter) APPROACH[key].enter(f, sp, T);
+      }
+      const r = APPROACH[key].step(f, dt, sp, T, d);
+      // ⚠️ 소용돌이 방지. 선회 반경은 r = v/ω 다. 빠를수록 크게 돈다.
+      //    잡어는 돌진 속도 4.75, 선회율 상한 200°/s → 반경 1.36유닛.
+      //    도착 판정(0.35)보다 크면 물고기가 목표 주위를 영원히 맴돈다.
+      //    선회율을 더 올리면 팽이가 되므로, 반대로 '들어갈 수 있는 속도까지 감속'한다.
+      //    실제로도 급선회하려면 속도를 줄인다.
+      const vFit = sp.turn * DEG * Math.max(0.22, d) * UI.fitK;
+      const spd  = UI.speedFit ? Math.max(r.speed*0.22, Math.min(r.speed, vFit)) : r.speed;
+      f.steerRate = steer(f, r.aim, dt, turnCap(sp, spd, r.rBL, d));
+      advance(f, spd, dt);
+
+      // 그래도 못 들어가고 맴돌면 — 한 번 크게 빠졌다가 다시 온다.
+      // 무한히 도는 것보다 '놓쳤네, 다시' 가 보기에도 낫다.
+      f.orbT = (d < 2.2 * sp.L) ? (f.orbT || 0) + dt : 0;
+      if (f.orbT > 3.5){
+        f.orbT = 0; f.aqStage = -1; f.aqKey = null;
+        f.breakOff = 0.9;
+      }
+      if (f.breakOff > 0){
+        f.breakOff -= dt;
+        f.steerRate = steer(f, f.ang, dt, turnCap(sp, spd, 2.4, undefined));
+        advance(f, r.speed*0.9, dt);
+      }
+      if (d < 0.35 || f.stateT > 18){ f.state = 'linger'; f.stateT = 0; f.lingerFor = rnd(2.2, 5.0); }
+    }
+    else if (f.state === 'linger'){
+      f.stateT += dt;
+      const spd = sp.approach*0.28;
+      f.steerRate = steer(f, f.ang + Math.sin(now*1.3 + f.phase)*1.2, dt, turnCap(sp, spd, 1.0));
+      advance(f, spd, dt);
+      if (f.stateT > f.lingerFor){ f.state = 'roam'; f.cool = 3; reanchor(f); }
+    }
+
+    // 감싸지 않는 종(Loop)은 밖으로 유랑했다 돌아온다 — 여유를 넓게 준다
+    const mg = PATHS[sp.path].wraps ? 2 : 5.5;
+    f.x = clamp(f.x, -mg, W+mg); f.y = clamp(f.y, -mg*0.6, H+mg*0.6);
+    // 화면 밖 랩은 좌표가 순간이동이라 v 가 1000까지 튄다.
+    // 그대로 두면 랩하는 순간 꼬리가 최고 박자로 한 번 튄다.
+    const v = Math.min(Math.hypot(f.x-f.px, f.y-f.py)/Math.max(dt,1e-4), 6);
+    f.speedNow = v;
+
+    // ⚠️ steerRate 와 v 는 프레임 차분이라 그 자체로 떨린다.
+    //    이 값을 그대로 꼬리에 물리면 '퍽퍽' 끊긴다. 반드시 평활화해서 쓴다.
+    const k = r => UI.smooth ? Math.min(1, dt*r) : 1;
+    f.vSm    += (v - f.vSm) * k(7);
+    f.turnSm += (f.steerRate - f.turnSm) * k(9);
+    const fTarget = f.state === 'notice' ? 0.22 : (f.state === 'interested' ? 1.8 : 1);
+    f.fSm    += (fTarget - f.fSm) * k(5);          // 상태가 바뀔 때 박자가 튀지 않게
+    maxTurn = Math.max(maxTurn, Math.abs(f.turnSm));
+
+    f.phase += dt * sp.waveFreq * UI.freq * f.fSm * (0.9 + Math.min(1.4, f.vSm*0.5)) * 5.2;
+
+    // ── 외투강 충전량 (제트 어종만) ───────────────────────────
+    // 부유 중 서서히 차고, 돌진하는 동안 확 빠진다.
+    // 값 자체보다 **차는 게 눈에 보인다**는 게 요점 — 돌진 예고가 공짜로 생긴다.
+    if (UI.jet && sp.jet){
+      // ★ 부유 **끝으로 갈수록** 찬다. 상수로 채우면 부유 내내 통통한 채라
+      //   '부풀었다 = 곧 튄다' 라는 예고가 성립하지 않는다.
+      const frac = f.hoverMax ? clamp(1 - f.hover/f.hoverMax, 0, 1) : 1;
+      const want = f.dash ? 0.0 : Math.pow(frac, 0.6);
+      const rate = f.dash ? 11.0 : 2.6;              // 뿜는 건 빠르고 차는 건 느리다
+      f.jet += (want - f.jet) * Math.min(1, dt*rate);
+    } else f.jet += (0.5 - f.jet) * Math.min(1, dt*4);
+
+    // ── 뱅킹 ─────────────────────────────────────────────────
+    // 선회율을 자기 상한 대비로 정규화해서 기울인다.
+    const rollT = UI.bank
+      ? clamp(-(f.turnSm/(sp.turn*DEG)) * (sp.bank ?? 0.42), -0.75, 0.75) : 0;
+    f.roll += (rollT - f.roll) * Math.min(1, dt*6);
+
+    // ── 비트 앤 글라이드 ──────────────────────────────────────
+    // 사인파를 계속 돌리면 메트로놈이다. 실제 물고기는 몇 번 차고 미끄러진다.
+    // 가속할 때 크게 치고, 정속으로 흐를 때 진폭이 죽는다.
+    if (UI.glide){
+      const eff = clamp((f.vSm - f.vPrev)/Math.max(dt,1e-4) * 0.35 + f.vSm*0.30, -1, 1.6);
+      f.effSm += (eff - f.effSm) * Math.min(1, dt*3.5);
+      // 위상에 얹은 완만한 포락선 — 순수 주기가 아니라 개체마다 어긋난다
+      const env = 0.62 + 0.38*Math.sin(f.phase*0.29 + f.seed*TAU);
+      f.beat = clamp(env * (0.82 + 0.34*f.effSm), 0.45, 1.15);
+    } else f.beat += (1 - f.beat) * Math.min(1, dt*4);
+    f.vPrev = f.vSm;
+
+    // ── C-스타트 진행 ────────────────────────────────────────
+    // 접히는 구간(전반)은 거의 안 나가고, 펴지는 구간(후반)에 튕겨나간다.
+    if (f.cst > 0){
+      f.cst = Math.max(0, f.cst - dt);
+      const u = 1 - f.cst/0.34;                         // 0 → 1
+      f.cBend = f.cDir * 0.46 * Math.sin(Math.PI * Math.min(u*1.55, 1));
+      const burst = sp.approach * (0.35 + 2.4 * clamp((u-0.28)/0.42, 0, 1));
+      f.steerRate = steer(f, f.cAway, dt, turnCap(sp, Math.max(burst,0.4), 1.1));
+      advance(f, burst, dt);
+    } else f.cBend += (0 - f.cBend) * Math.min(1, dt*7);
+
+    // ── 가슴지느러미 젓기 세기 ────────────────────────────────
+    // ★ 느릴수록 크게 젓고 빠를수록 몸에 붙인다. 실제 물고기가 그렇고,
+    //   덕분에 '머무는 중'과 '내달리는 중'이 지느러미만 봐도 구분된다.
+    // ⚠️ 기준을 sp.approach 로 잡으면 안 된다 — 대물은 접근 속도(0.5)가
+    //    순항 속도(약 2.1)보다 **느려서** 영원히 지느러미를 접고 있게 된다.
+    //    개체 자신의 아주 느린 평균 = 그 물고기의 순항 속도를 기준으로 삼는다.
+    // 부속이 따라올 '조금 전의 선회'. 몸통보다 훨씬 느리게 따라간다.
+    f.turnLag += (f.turnSm - f.turnLag) * Math.min(1, dt*2.2);
+
+    // ── 다리의 관성 (스프링-댐퍼) ─────────────────────────────
+    // ★ 다리는 물속에 매달린 질량이다. 몸이 옆으로 가속하면 뒤로 쏠렸다가
+    //   **넘어갔다 흔들리며 잦아든다.** 시간 기반 흩날림만으로는 헤엄을 치든
+    //   멈춰 있든 똑같아서 '그림이 떠 있는' 느낌이 남는다.
+    if (sp.armDrift){
+      const aLat = f.vSm * f.turnSm;                 // 구심 가속 = v·ω
+      const aFwd = (f.vSm - f.vPrev) / Math.max(dt, 1e-4);
+      const K = sp.armK ?? 26, C = sp.armC ?? 5.4;   // ζ = C/(2√K) ≈ 0.53 — 한두 번 출렁이고 멈춘다
+      f.armA = -K*f.armX - C*f.armV + aLat*(sp.armGain ?? 1.5) + aFwd*(sp.armFwd ?? 0.16);
+      f.armV += f.armA * dt;
+      f.armX += f.armV * dt;
+      f.armX = clamp(f.armX, -0.85, 0.85);
+      // 항력: 빠를수록 다발이 유선형으로 모인다
+      // ⚠️ 돌진이 0.6초인데 시상수가 0.25초면 목표의 70% 까지밖에 못 간다.
+      //    변화가 다 일어나기 전에 끝나서 **안 보인다.** 크게, 그리고 빠르게.
+      const drag = clamp(f.vSm / Math.max(0.7, f.vAvg*1.6), 0, 1);
+      const tuckT = 1 - 0.82*drag;
+      f.armTuck += (tuckT - f.armTuck) * Math.min(1, dt*(tuckT < f.armTuck ? 11 : 3.4));
+      // 빠를 땐 물살 흩날림이 항력에 묻힌다
+      f.armAmb  += ((1 - 0.80*drag) - f.armAmb) * Math.min(1, dt*4);
+    }
+    f.vAvg += (f.vSm - f.vAvg) * Math.min(1, dt*0.25);
+    const r = Math.max(0, f.vSm) / Math.max(0.35, f.vAvg);   // 음수 방어(위 참조)
+    const fanT = UI.fin ? clamp(1/(1 + 0.55*Math.pow(r, 1.7)), 0.12, 1.0) : 0;
+    f.fin += (fanT - f.fin) * Math.min(1, dt*5);
+
+    if (UI.trail){
+      f.trail.push(f.x, f.y);
+      if (f.trail.length > 260) f.trail.splice(0, 2);
+    }
+  }
+  document.getElementById('rTurn').textContent = (maxTurn/DEG).toFixed(0);
+}
+
+function draw(){
+  for (const f of fish){
+    const sp = SPECIES[f.sp];
+    // 어종마다 선회율 상한이 달라서(85~280°/s) 같은 계수를 쓰면 잡어만 꺾인다.
+    // 자기 상한 대비로 정규화해야 네 종이 같은 정도로 휜다.
+    const norm = f.turnSm / (sp.turn * DEG);
+    const turnBend = clamp(-norm * 0.22 * UI.turnK + UI.forceTurn * UI.turnK + f.cBend,
+                           -0.60, 0.60);
+    const u = f.mesh.material.uniforms;
+    u.uAmp.value   = UI.amp * sp.waveAmp * WAVE_K * f.beat;
+    u.uPhase.value = f.phase;
+    u.uTurn.value  = turnBend;
+    u.uJet.value   = f.jet;
+    u.uRoll.value  = f.roll;
+    u.uRip.value   = (sp.finRipple ?? 0) * f.fin;
+    u.uTime.value  = now + f.seed * 97.0;                 // 개체마다 흩날림 위상을 어긋낸다
+    u.uTurnLag.value = clamp(-(f.turnLag/(sp.turn*DEG)) * 0.22 * UI.turnK + f.cBend,
+                             -0.60, 0.60);
+    u.uDrift.value    = (sp.armDrift ?? 0) * (UI.armInertia ? f.armAmb : 1);
+    u.uArmSwing.value = UI.armInertia ? -f.armX : 0;
+    u.uArmTuck.value  = UI.armInertia ? f.armTuck : 1;
+    u.uPivot.value    = UI.recenter ? 0.36 : 0.0;
+    u.uOn.value    = UI.bend ? 1 : 0;
+    u.uRim.value   = UI.rim ? 1 : 0;
+    f.mesh.material.wireframe = UI.wire;
+    f.mesh.position.set(f.x - W/2, f.y - H/2, 0.34);
+    f.mesh.rotation.z = f.ang;
+
+    f.shadow.visible = UI.shadow && !UI.wire;
+    if (f.shadow.visible){
+      const su = f.shadow.material.uniforms;
+      su.uAmp.value = u.uAmp.value; su.uPhase.value = f.phase;
+      su.uTurn.value = turnBend; su.uOn.value = u.uOn.value;
+      su.uJet.value = f.jet; su.uRoll.value = f.roll; su.uRip.value = u.uRip.value;
+      su.uTime.value = u.uTime.value; su.uTurnLag.value = u.uTurnLag.value;
+      su.uDrift.value = u.uDrift.value;
+      su.uArmSwing.value = u.uArmSwing.value; su.uArmTuck.value = u.uArmTuck.value;
+      su.uPivot.value = u.uPivot.value;
+      const depth = clamp(1 - f.y/H, 0, 1), off = 0.06 + depth*0.16;
+      f.shadow.position.set(f.x - W/2 + off*0.8, f.y - H/2 - off*1.3, 0.02);
+      f.shadow.rotation.z = f.ang;
+      f.shadow.material.opacity = 0.40 - depth*0.16;
+    }
+  }
+  // 카메라 기울임 — 진짜 3D인지 확인용
+  const t = UI.tilt*DEG, d = 14;
+  cam.position.set(0, -Math.sin(t)*d, Math.cos(t)*d);
+  cam.up.set(0,1,0); cam.lookAt(camTarget);
+  renderer.render(scene, cam);
+}
+
+/* ── 궤적 ───────────────────────────────────────────────────────── */
+let trailLines = [];
+function refreshTrails(){
+  trailLines.forEach(l => trailRoot.remove(l)); trailLines = [];
+  if (!UI.trail) return;
+  fish.forEach(f => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(780), 3));
+    const l = new THREE.Line(g, new THREE.LineBasicMaterial({
+      color:0x6fd6bd, transparent:true, opacity:0.34}));
+    l.position.z = 0.05; trailRoot.add(l); trailLines.push(l); f.line = l;
+  });
+}
+function drawTrails(){
+  if (!UI.trail) return;
+  fish.forEach(f => {
+    if (!f.line) return;
+    const a = f.line.geometry.attributes.position, n = f.trail.length/2;
+    for (let i = 0; i < 260; i++){
+      const k = Math.min(i, n-1);
+      a.setXYZ(i, (n ? f.trail[k*2] : 0) - W/2, (n ? f.trail[k*2+1] : 0) - H/2, 0);
+    }
+    a.needsUpdate = true;
+  });
+}
+
+/* ── 루프 ───────────────────────────────────────────────────────── */
+let last = performance.now(), fpsAcc = 0, fpsN = 0, stepOnce = false;
+function frame(t){
+  requestAnimationFrame(frame);
+  // ⚠️ 음수 dt 를 막는다. 첫 프레임에 t < last 가 될 수 있고, 그러면
+  //    평활화 계수가 음수가 되어 vSm 이 **음수**로 튄다. 그 한 프레임이
+  //    pow(음수, 1.7) = NaN 을 만들고, clamp 는 NaN 을 걸러주지 않아서
+  //    지느러미가 **영구히 멈춘 채로 남는다.** 정지 화면으로는 안 보인다.
+  let dt = clamp((t - last)/1000, 0, 0.05); last = t;
+  if (dt > 0){ fpsAcc += 1/dt; fpsN++; }
+  if (fpsN >= 20){ document.getElementById('rFps').textContent = (fpsAcc/fpsN).toFixed(0);
+                   fpsAcc = 0; fpsN = 0; }
+  if (!UI.paused || stepOnce){ update(dt * (stepOnce ? 1 : UI.speed)); stepOnce = false; }
+  drawTrails();
+  draw();
+}
+
+/* ── 크기 ───────────────────────────────────────────────────────── */
+function resize(){
+  const w = stage.clientWidth, h = Math.round(w * H/W);
+  renderer.setSize(w, h, false);
+  cv.style.height = h + 'px';
+  const aspect = w/h, base = H/2;
+  cam.top = base; cam.bottom = -base;
+  cam.left = -base*aspect; cam.right = base*aspect;
+  cam.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+
+/* ── 조작 ───────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const bind = (sid, vid, key, fmt) => {
+  const s = $(sid);
+  const apply = () => { UI[key] = parseFloat(s.value); $(vid).textContent = fmt(UI[key]); };
+  s.addEventListener('input', apply); apply();
+};
+bind('sAmp','vAmp','amp', v => v.toFixed(2));
+bind('sFreq','vFreq','freq', v => v.toFixed(2));
+bind('sTurn','vTurn','turnK', v => v.toFixed(2));
+bind('sSpeed','vSpeed','speed', v => v.toFixed(2)+'×');
+bind('sTilt','vTilt','tilt', v => v.toFixed(0)+'°');
+bind('sHead','vHead','headTrack', v => v.toFixed(2));
+bind('sLane','vLane','laneK', v => v.toFixed(2)+'×');
+bind('sSlip','vSlip','slipMax', v => v.toFixed(0)+'°');
+bind('sRad','vRad','minRadius', v => v.toFixed(2));
+bind('sClose','vClose','closeBoost', v => v.toFixed(2));
+$('sSolo').addEventListener('input', () => { UI.soloK = parseFloat($('sSolo').value);
+  $('vSolo').textContent = UI.soloK.toFixed(2)+'×'; reseed(); });
+bind('sLaneT','vLaneT','laneT', v => v.toFixed(2)+'×');
+$('sTilt').addEventListener('input', () => $('rTilt').innerHTML = UI.tilt.toFixed(0)+'<em>° 기울임</em>');
+
+const tog = (id, key, after) => {
+  const el = $(id);
+  const apply = () => { UI[key] = el.checked; if (after) after(); };
+  el.addEventListener('change', apply); apply();
+};
+tog('tBend','bend', () => {
+  $('bendNote').textContent = UI.bend
+    ? '켜짐 — sin(phase) 와 turnRate 로 몸통이 굽습니다. 본도 클립도 없습니다.'
+    : '꺼짐 — 지금 스프라이트 버전과 같습니다. 몸이 굳은 채로 미끄러집니다.';
+});
+tog('tFit','speedFit');
+tog('tSlip','slipCap');
+tog('tSmooth','smooth');
+tog('tShadow','shadow');
+tog('tRim','rim');
+tog('tJet','jet');
+tog('tBank','bank');
+tog('tGlide','glide');
+tog('tFin','fin');
+tog('tCst','cstart');
+tog('tRec','recenter');
+tog('tAvoid','avoid');
+// 다리 위상 분산은 어종 값을 덮어쓴다 — A/B 로 바로 비교하려고 전역으로 뺐다.
+$('sSpread').addEventListener('input', e => {
+  const v = +e.target.value; $('vSpread').textContent = v.toFixed(1);
+  for (const f of fish){
+    if (!SPECIES[f.sp].waveSpread) continue;
+    f.mesh.material.uniforms.uSpread.value = v;
+    f.shadow.material.uniforms.uSpread.value = v;
+  }
+});
+tog('tWire','wire');
+tog('tTrail','trail', refreshTrails);
+
+$('bPause').addEventListener('click', () => {
+  UI.paused = !UI.paused;
+  $('bPause').textContent = UI.paused ? '계속' : '일시정지';
+  $('bPause').classList.toggle('armed', UI.paused);
+});
+$('bStep').addEventListener('click', () => { stepOnce = true; });
+$('bReseed').addEventListener('click', reseed);
+
+function buildSpeciesList(){
+  const el = $('spList'); el.innerHTML = '';
+  const byType = {};
+  ORDER.forEach(k => (byType[SPECIES[k].path] = byType[SPECIES[k].path] || []).push(k));
+  for (const t of ['lane','hover','loop']){
+    if (!byType[t]) continue;
+    const head = document.createElement('div');
+    head.className = 'tHead';
+    head.innerHTML = `<span>${PATHS[t].label}</span><em>${byType[t].length}종</em>`;
+    el.appendChild(head);
+    for (const k of byType[t]){
+      const sp = SPECIES[k];
+      const c = sp.base.map(v => Math.round(Math.min(1, v*1.3)*255)).join(',');
+      const row = document.createElement('label');
+      row.className = 'tg'; row.htmlFor = 'sp_' + k;
+      row.innerHTML = `<i class="chip" style="background:rgb(${c})"></i>` +
+        `<span class="nm">${sp.name}${sp.school ? ' <em>무리</em>' : ''}</span>` +
+        `<span class="plan">${sp.approachPlan.map(p=>APPROACH[p.style].name).join('→')}</span>` +
+        `<input type="checkbox" id="sp_${k}" ${ACTIVE.has(k) ? 'checked' : ''}><i class="sw"></i>`;
+      row.querySelector('input').addEventListener('change', e => {
+        if (e.target.checked) ACTIVE.add(k); else ACTIVE.delete(k);
+        reseed();
+      });
+      el.appendChild(row);
+    }
+  }
+}
+const setActive = keys => { ACTIVE = new Set(keys); buildSpeciesList(); reseed(); };
+/* ── 프리셋 — 고친 순서대로 한 단계씩. 개체는 그대로 두고 값만 바꾼다 ── */
+const PRESETS = [
+  { name:'예전', tag:'BEFORE',
+    look:'머리가 좌우로 크게 흔들립니다 — 잡어가 3초에 <b>76°</b>. 꼬리 박자도 툭툭 끊깁니다. 여기가 출발점입니다.',
+    ui:{headTrack:1.0, slipCap:false, smooth:false, laneT:0.5, laneK:1.0} },
+  { name:'꼬리 평활화', tag:'SMOOTH',
+    look:'꼬리 떨림<b>만</b> 사라집니다. 머리 흔들림은 예전과 똑같습니다. 프레임 간 변화 0.027 → 0.007.',
+    ui:{headTrack:1.0, slipCap:false, smooth:true, laneT:0.5, laneK:1.0} },
+  { name:'머리 감쇠', tag:'BUG',
+    look:'머리는 잠잠해지는데 <b>대물이 옆으로 갑니다</b> — 머리가 진행 방향에서 43° 벌어진 채 고정. 지적하신 게걸음이 이 상태입니다.',
+    ui:{headTrack:0.35, slipCap:false, smooth:true, laneT:0.5, laneK:1.0} },
+  { name:'슬립 상한', tag:'FIXED',
+    look:'게걸음이 사라집니다 — 대물 슬립 43° → <b>16°</b>. 머리는 여전히 예전보다 잠잠합니다. 사행 어종은 영향 없음.',
+    ui:{headTrack:0.35, slipCap:true, slipMax:18, smooth:true, laneT:0.5, laneK:1.0} },
+  { name:'사행 주기 2배', tag:'BEST',
+    look:'<b>채택된 값입니다.</b> 감쇠 대신 궤도를 완만하게 늘였습니다 — 잡어 흔들림 76° → <b>21°</b>, 슬립 8°. 지나는 자리와 오는 주기는 그대로입니다.',
+    ui:{headTrack:0.35, slipCap:true, slipMax:14, smooth:true, laneT:1.0, laneK:1.0} }
+];
+const CTRL = {headTrack:'sHead', slipCap:'tSlip', slipMax:'sSlip',
+              smooth:'tSmooth', laneT:'sLaneT', laneK:'sLane'};
+let curPreset = -1;
+function applyPreset(i){
+  const p = PRESETS[i]; if (!p) return;
+  const full = Object.assign({slipMax:18}, p.ui);
+  for (const key in full){
+    const el = $(CTRL[key]); if (!el) continue;
+    if (el.type === 'checkbox'){ el.checked = !!full[key]; el.dispatchEvent(new Event('change')); }
+    else { el.value = full[key]; el.dispatchEvent(new Event('input')); }
+  }
+  curPreset = i;
+  $('lookfor').innerHTML = `<b>${i+1}. ${p.name}</b> — ${p.look}`;
+  [...$('pbar').children].forEach((b, n) => b.setAttribute('aria-pressed', n === i));
+}
+(function buildStyles(){
+  const bar = $('sbar'), desc = $('sdesc');
+  const opts = [[null, '어종별 조합', '어종마다 정해둔 단계 조합을 씁니다. 대물은 궤도유지 → 선회접근 → 눈치보기.']]
+    .concat(APPROACH_KEYS.map(k => [k, APPROACH[k].name, APPROACH[k].desc]));
+  const pick = (k, d) => { UI.forceStyle = k; desc.textContent = d;
+    fish.forEach(f => { f.aqStage = -1; f.aqKey = null; });
+    [...bar.children].forEach((b,i) => b.setAttribute('aria-pressed', opts[i][0] === k)); };
+  opts.forEach(([k, name, d]) => {
+    const b = document.createElement('button');
+    b.textContent = name; b.setAttribute('aria-pressed','false');
+    b.addEventListener('click', () => pick(k, d));
+    bar.appendChild(b);
+  });
+  pick(null, opts[0][2]);
+})();
+
+(function buildPresets(){
+  const bar = $('pbar');
+  PRESETS.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<b>${i+1}. ${p.name}</b><i>${p.tag}</i>`;
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => applyPreset(i));
+    bar.appendChild(b);
+  });
+})();
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const n = '12345'.indexOf(e.key);
+  if (n >= 0) applyPreset(n);
+});
+
+const setUI = (o) => {
+  for (const [id, key, val] of o){
+    const el = $(id);
+    if (el.type === 'checkbox'){ el.checked = val; el.dispatchEvent(new Event('change')); }
+    else { el.value = val; el.dispatchEvent(new Event('input')); }
+  }
+};
+$('bMvp').addEventListener('click', () => setActive(MVP));
+$('bAll').addEventListener('click', () => setActive(ORDER));
+
+const hold = (on) => { UI.forceTurn = on ? 0.42 : 0; $('bTurnAll').classList.toggle('armed', on); };
+['mousedown','touchstart'].forEach(e => $('bTurnAll').addEventListener(e, ev => { ev.preventDefault(); hold(true); }));
+['mouseup','mouseleave','touchend','touchcancel'].forEach(e =>
+  $('bTurnAll').addEventListener(e, () => hold(false)));
+$('bTurnAll').addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') hold(true); });
+$('bTurnAll').addEventListener('keyup', () => hold(false));
+
+// 수면 클릭 → 찌
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+cv.addEventListener('pointerdown', e => {
+  const r = cv.getBoundingClientRect();
+  ndc.x = ((e.clientX - r.left)/r.width)*2 - 1;
+  ndc.y = -((e.clientY - r.top)/r.height)*2 + 1;
+  ray.setFromCamera(ndc, cam);
+  const hit = ray.intersectObject(water);
+  if (!hit.length) return;
+  const x = hit[0].point.x + W/2, y = hit[0].point.y + H/2;
+  bob = {x, y, t:0};
+  bobber.position.set(x - W/2, y - H/2, 0.35);
+  ring.position.set(x - W/2, y - H/2, 0.3);
+  bobber.visible = ring.visible = true;
+  fish.forEach(f => {
+    if (f.state !== 'roam') { f.state = 'roam'; reanchor(f); }
+    // ★ C-스타트. 실제 물고기의 도피 반응은 '몸을 C 로 접었다 펴며 튕겨나가는' 것이다.
+    //   놀랐을 때 그냥 빨라지기만 하면 '재생 속도를 올린 것'으로 보인다.
+    const sp = SPECIES[f.sp], d = Math.hypot(f.x - x, f.y - y);
+    if (UI.cstart && d < sp.noticeR * 0.62){
+      f.cst = 0.34;
+      const away = Math.atan2(f.y - y, f.x - x);
+      let da = away - f.ang; while (da > Math.PI) da -= 2*Math.PI; while (da < -Math.PI) da += 2*Math.PI;
+      f.cDir = da >= 0 ? 1 : -1;                 // 가까운 쪽으로 접는다
+      f.cAway = away;
+    }
+  });
+  $('hint').classList.add('gone');
+});
+
+resize();
+buildSpeciesList();
+reseed();
+applyPreset(4);   // 채택 = 사행 주기 2배
+requestAnimationFrame(frame);
+</script>

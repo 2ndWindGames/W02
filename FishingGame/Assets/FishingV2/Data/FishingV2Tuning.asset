@@ -1,0 +1,61 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e8fe0c960556a8418b22c925afc8fad, type: 3}
+  m_Name: FishingV2Tuning
+  m_EditorClassIdentifier: FishingV2::Fishing.V2.FishingV2TuningAsset
+  PondSize: {x: 16, y: 9}
+  SessionSeconds: 90
+  MaxDeltaTime: 0.05
+  NoticeDuration: 0.3
+  CuriosityTick: 1
+  ArriveRadius: 0.35
+  RejectedCooldown: 3
+  ApproachTimeout: 18
+  OrbitBreakOff: 3.5
+  LingerMin: 1.2
+  LingerMax: 2.4
+  MinTurnRadiusBodyLengths: 0.55
+  CloseTurnBoost: 0.4
+  SpeedFitK: 0.85
+  SlipMaxDeg: 14
+  HeadTrack: 0.35
+  HeadCourseSmoothing: 0.55
+  StartleImpulse: 0.45
+  StartleOffsetCap: 0.85
+  StartleOffsetDecay: 0.16
+  RecastSpamWindow: 3
+  RecastTimeMultiplierMax: 2.5
+  RecastRadiusMultiplierMax: 1.35
+  LureRecovery: 2.5
+  LureFatigueFloor: 0.55
+  LureGuaranteeThreshold: 0.6
+  AvoidanceRadiusBodyLengths: 3.6
+  AvoidanceGain: 5.5
+  AvoidanceOffsetCapBodyLengths: 0.85
+  AvoidanceTargetSmoothing: 1.1
+  AvoidanceSmoothing: 0.9
+  ReelDuration: 0.3
+  CastDuration: 0.3
+  CatchLiftDuration: 0.3
+  CatchFlyDuration: 0.55
+  CatchArcHeight: 1.7
+  BiteBackBase: 0.16
+  BiteBackPerLength: 0.52
+  WaveAmplitudeScale: 0.4
+  PivotU: 0.36
+  TurnBendScale: 0.22
+  MaxTurnBend: 0.6
+  EnableLure: 1
+  EnableAutomaticReel: 1
+  EnableSpeedFit: 1
+  EnableAvoidance: 1
+  EnableCatchFlight: 1

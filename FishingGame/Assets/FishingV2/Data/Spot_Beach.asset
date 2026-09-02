@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9030868aea2bbd4b93befc0cfba3d83, type: 3}
+  m_Name: Spot_Beach
+  m_EditorClassIdentifier: FishingV2::Fishing.V2.FishingSpotAsset
+  SpotId: beach
+  DisplayName: "\uD574\uBCC0"
+  SessionSeconds: 90
+  Species:
+  - {fileID: 11400000, guid: b8e8baf3835e1f546a7326ceeb39e2c1, type: 2}
+  - {fileID: 11400000, guid: 18598d63ce939b641823b89a591fbbaf, type: 2}
+  - {fileID: 11400000, guid: 78aefbb2969ea9142945ba01b2f90a91, type: 2}
+  - {fileID: 11400000, guid: 6df20279a833daa4596bcdfbe8326366, type: 2}
+  - {fileID: 11400000, guid: e72aeafc137b76f48868b66872cef358, type: 2}
