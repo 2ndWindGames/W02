@@ -136,6 +136,33 @@ namespace Fishing.V2
             return mesh;
         }
 
+        /// <summary>
+        /// Returns the local +X contact point used by the v25 swept-mouth test. Most species
+        /// derive it from the generated geometry; squid explicitly overrides it to the arm
+        /// bundle because the mantle swims ahead of the actual catch point.
+        /// </summary>
+        public static float GetMouthOffset(FishSpeciesConfig species, Mesh mesh)
+        {
+            if (species != null && species.Visual != null && species.Visual.HasMouthOffsetOverride)
+            {
+                return species.Visual.MouthOffset;
+            }
+
+            if (mesh == null || mesh.vertexCount == 0)
+            {
+                return species != null && species.Visual != null ? species.Visual.Length * 0.45f : 0f;
+            }
+
+            Vector3[] vertices = mesh.vertices;
+            float maxX = float.NegativeInfinity;
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                maxX = Mathf.Max(maxX, vertices[i].x);
+            }
+
+            return float.IsNegativeInfinity(maxX) ? 0f : maxX;
+        }
+
         public static Mesh BuildFallback(string name)
         {
             Mesh mesh = new Mesh { name = name };

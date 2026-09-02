@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -66,6 +67,56 @@ namespace Fishing.V2.EditorTools
             AssetDatabase.Refresh();
             Selection.activeObject = spot;
             Debug.Log("Fishing V2: 기본 튜닝·5종 어종·해변 낚시터 데이터를 생성했습니다.");
+        }
+
+        [MenuItem("Fishing V2/Create validation all-species data", priority = 15)]
+        public static void CreateValidationData()
+        {
+            EnsureFolder(Root);
+            EnsureFolder(DataRoot);
+            EnsureFolder(SceneRoot);
+            EnsureUrpPipeline();
+
+            List<FishSpeciesConfig> defaults = FishingV2Catalog.CreateValidationDefaults();
+            FishSpeciesAsset[] speciesAssets = new FishSpeciesAsset[defaults.Count];
+            for (int i = 0; i < defaults.Count; i++)
+            {
+                FishSpeciesConfig config = defaults[i];
+                string path = DataRoot + "/Fish_" + config.SpeciesId + ".asset";
+                FishSpeciesAsset asset = AssetDatabase.LoadAssetAtPath<FishSpeciesAsset>(path);
+                if (asset == null)
+                {
+                    asset = ScriptableObject.CreateInstance<FishSpeciesAsset>();
+                    asset.Data = config;
+                    AssetDatabase.CreateAsset(asset, path);
+                }
+                else
+                {
+                    asset.Data = config;
+                    EditorUtility.SetDirty(asset);
+                }
+
+                speciesAssets[i] = asset;
+            }
+
+            string spotPath = DataRoot + "/Spot_Validation_AllSpecies.asset";
+            FishingSpotAsset spot = AssetDatabase.LoadAssetAtPath<FishingSpotAsset>(spotPath);
+            if (spot == null)
+            {
+                spot = ScriptableObject.CreateInstance<FishingSpotAsset>();
+                AssetDatabase.CreateAsset(spot, spotPath);
+            }
+
+            spot.SpotId = "validation_all_species";
+            spot.DisplayName = "검증 — 전체 어종";
+            spot.SessionSeconds = 90f;
+            spot.Species = speciesAssets;
+            EditorUtility.SetDirty(spot);
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Selection.activeObject = spot;
+            Debug.Log("Fishing V2: 실제 5종 + 검증용 3종 전체 어종 데이터를 생성/갱신했습니다.");
         }
 
         private static void EnsureUrpPipeline()

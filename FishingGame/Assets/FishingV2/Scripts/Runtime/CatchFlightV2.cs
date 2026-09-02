@@ -19,6 +19,10 @@ namespace Fishing.V2
             public float Time;
             public float Total;
             public float LiftDuration;
+            public Vector2 Normal;
+            public float Bow;
+            public float RimZ;
+            public float BaseScale;
             public FishSpeciesConfig Species;
             public float SizeCm;
             public Action<FishSpeciesConfig, float> OnArrive;
@@ -53,7 +57,11 @@ namespace Fishing.V2
             renderer.sharedMaterial = fish.SharedMaterial != null ? fish.SharedMaterial : _flightMaterial;
 
             // Keep the reward flight in the same foreground depth band as the fish and bobber.
-            Vector3 from = new Vector3(fish.Position.x, fish.Position.y, 0.52f);
+            Vector3 from = new Vector3(fish.Position.x, fish.Position.y, fish.WorldDepthZ);
+            Vector2 delta = new Vector2(target.x - from.x, target.y - from.y);
+            float distance = Mathf.Max(0.001f, delta.magnitude);
+            Vector2 pondCenter = _tuning != null ? _tuning.PondRect.center : Vector2.zero;
+            Vector2 normal = FishingV2CatchMath.InwardNormal(new Vector2(from.x, from.y), new Vector2(target.x, target.y), pondCenter);
             Flight flight = new Flight
             {
                 Object = flyer,
@@ -62,7 +70,13 @@ namespace Fishing.V2
                 Heading = fish.HeadingRadians,
                 Time = 0f,
                 LiftDuration = _tuning != null ? _tuning.CatchLiftDuration : 0.30f,
-                Total = (_tuning != null ? _tuning.CatchLiftDuration : 0.30f) + (_tuning != null ? _tuning.CatchFlyDuration : 0.55f),
+                Total = (_tuning != null ? _tuning.CatchLiftDuration : 0.30f) +
+                    (_tuning != null ? _tuning.CatchFlyDuration : 0.55f) +
+                    (_tuning != null ? _tuning.CatchSettleDuration : 0.36f),
+                Normal = normal,
+                Bow = FishingV2CatchMath.FlightBow(distance),
+                RimZ = target.z + 0.10f,
+                BaseScale = fish.SizeScale,
                 Species = fish.Species,
                 SizeCm = fish.SizeCm,
                 OnArrive = onArrive,
@@ -83,31 +97,65 @@ namespace Fishing.V2
                 Flight flight = _flights[i];
                 flight.Time += dt;
                 float liftDuration = flight.LiftDuration;
-                float flyDuration = Mathf.Max(0.01f, flight.Total - liftDuration);
+                float settleDuration = _tuning != null ? _tuning.CatchSettleDuration : 0.36f;
+                float flyDuration = Mathf.Max(0.01f, flight.Total - liftDuration - settleDuration);
                 float lift = Mathf.Clamp01(flight.Time / Mathf.Max(0.01f, liftDuration));
                 float fly = Mathf.Clamp01((flight.Time - liftDuration) / flyDuration);
+                float settle = Mathf.Clamp01((flight.Time - liftDuration - flyDuration) / Mathf.Max(0.01f, settleDuration));
                 float liftEase = SmoothStep(lift);
                 float flyEase = SmoothStep(fly);
 
                 Vector3 position;
                 float scale;
-                float alpha;
                 if (flight.Time < liftDuration)
                 {
-                    position = flight.From + Vector3.forward * (liftEase * 0.35f);
-                    scale = 1f + liftEase * 0.20f;
-                    alpha = 1f;
+                    position = flight.From + Vector3.forward * (liftEase * 0.55f);
+                    float rise = liftEase;
+                    scale = flight.BaseScale * FishingV2CatchMath.LiftScale(rise, 0f, _tuning != null ? _tuning.CatchLiftScale : 1.5f);
+                }
+                else if (flight.Time < liftDuration + flyDuration)
+                {
+                    Vector3 start = flight.From + Vector3.forward * 0.55f;
+                    position = Vector3.Lerp(start, flight.Target, flyEase);
+                    float bow = Mathf.Sin(flyEase * Mathf.PI) * flight.Bow;
+                    position.x += flight.Normal.x * bow;
+                    position.y += flight.Normal.y * bow;
+                    float top = flight.From.z + 0.55f;
+                    position.z = top + Mathf.Sin(fly * Mathf.PI) * (_tuning != null ? _tuning.CatchArcHeight : 1.7f) +
+                        (flight.RimZ - top) * flyEase * flyEase;
+                    float rise = Mathf.Clamp((position.z - flight.From.z) / 0.55f, 0f, 4f);
+                    scale = flight.BaseScale * FishingV2CatchMath.LiftScale(rise, 0.42f * flyEase * flyEase, _tuning != null ? _tuning.CatchLiftScale : 1.5f);
                 }
                 else
                 {
-                    position = Vector3.Lerp(flight.From + Vector3.forward * 0.35f, flight.Target, flyEase);
-                    position.z += Mathf.Sin(fly * Mathf.PI) * (_tuning != null ? _tuning.CatchArcHeight : 1.7f) * 0.20f;
-                    scale = 1.20f - flyEase * 0.86f;
-                    alpha = 1f - Mathf.Clamp01((fly - 0.75f) / 0.25f);
+                    float s = settle;
+                    float firstEnd = _tuning != null ? _tuning.CatchBounceOneEnd : 0.46f;
+                    float secondEnd = _tuning != null ? _tuning.CatchBounceTwoEnd : 0.78f;
+                    float firstHeight = _tuning != null ? _tuning.CatchBounceOneHeight : 0.46f;
+                    float secondHeight = _tuning != null ? _tuning.CatchBounceTwoHeight : 0.19f;
+                    float h;
+                    h = FishingV2CatchMath.BasketBounceHeight(s, firstHeight, secondHeight, firstEnd, secondEnd);
+
+                    float jig = Mathf.Sin(s * Mathf.PI * 4.6f) * Mathf.Pow(1f - s, 1.6f) * 0.16f;
+                    position = flight.Target + new Vector3(flight.Normal.x * jig, flight.Normal.y * jig, 0f);
+                    position.z = flight.RimZ + h - 0.62f * Mathf.Pow(s, 2.2f);
+                    float rise = Mathf.Clamp((position.z - flight.From.z) / 0.55f, 0f, 4f);
+                    float sink = 0.42f + 0.52f * s * s;
+                    scale = flight.BaseScale * FishingV2CatchMath.LiftScale(rise, sink, _tuning != null ? _tuning.CatchLiftScale : 1.5f);
+
+                    if (s >= 1f)
+                    {
+                        if (flight.OnArrive != null) flight.OnArrive(flight.Species, flight.SizeCm);
+                        DestroyObjectSafe(flight.Object);
+                        _flights.RemoveAt(i);
+                        continue;
+                    }
                 }
 
                 flight.Object.transform.position = position;
-                flight.Object.transform.rotation = Quaternion.Euler(0f, 0f, flight.Heading - fly * 0.5f + Mathf.Sin(fly * 8f) * 0.09f * (1f - fly));
+                float normalizedFlight = Mathf.Clamp01(flight.Time / Mathf.Max(0.01f, flight.Total));
+                flight.Object.transform.rotation = Quaternion.Euler(0f, 0f,
+                    flight.Heading - normalizedFlight * 0.5f + Mathf.Sin(normalizedFlight * 8f) * 0.09f * (1f - normalizedFlight));
                 flight.Object.transform.localScale = Vector3.one * scale;
 
                 if (flight.Renderer != null)
@@ -132,16 +180,14 @@ namespace Fishing.V2
                     flight.PropertyBlock.SetFloat("_ArcBody", flight.Species.Visual.ArcBody);
                     flight.PropertyBlock.SetFloat("_ArmSwing", 0f);
                     flight.PropertyBlock.SetFloat("_ArmTuck", 1f);
+                    flight.PropertyBlock.SetFloat("_ArmFlow", 0f);
+                    flight.PropertyBlock.SetFloat("_DriftPh", 0f);
+                    flight.PropertyBlock.SetFloat("_MantleJet", flight.Species.Visual.MantleJet ? 1f : 0f);
+                    flight.PropertyBlock.SetFloat("_TurnPrep", 0f);
                     flight.PropertyBlock.SetFloat("_Pivot", _tuning != null ? _tuning.PivotU : 0.36f);
                     flight.PropertyBlock.SetFloat("_RimStrength", 1f);
+                    flight.PropertyBlock.SetFloat("_Depth", 0f);
                     flight.Renderer.SetPropertyBlock(flight.PropertyBlock);
-                }
-
-                if (flight.Time >= flight.Total)
-                {
-                    if (flight.OnArrive != null) flight.OnArrive(flight.Species, flight.SizeCm);
-                    DestroyObjectSafe(flight.Object);
-                    _flights.RemoveAt(i);
                 }
             }
         }

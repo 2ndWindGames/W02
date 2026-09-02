@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: Fish_tuna
   m_EditorClassIdentifier: FishingV2::Fishing.V2.FishSpeciesAsset
   Data:
+    DataVersion: 25
     SpeciesId: tuna
     DisplayName: "\uCC38\uCE58"
     PathType: 1
@@ -37,6 +38,121 @@ MonoBehaviour:
     BiteWindow: 0.6
     TurnRateDeg: 85
     RespawnDelay: 25
+    Feed:
+      NoticeT: 0.22
+      NoticeK: 0.7
+      Carry: 0.92
+      ApproachK: 1.18
+      CarryApproach: 0.62
+      Linger:
+        Min: 0.75
+        Max: 1.35
+      LingerSpeed: 0.62
+      LingerYaw: 0.3
+      LingerFreq: 0.7
+      SchoolJoin: 0
+      JoinDelay:
+        Min: 0.08
+        Max: 0.22
+      Arrival: 0.52
+      Commit:
+        Min: 0.65
+        Max: 0.9
+      Reconsider:
+        Min: 0.65
+        Max: 1.1
+      Doubt: 0.08
+      QuitBelow: 0.16
+      Competition: 0.72
+      StrikeBodyLengths: 0.5
+      StrikeMinimum: 0.52
+      StrikeSpeed: 2.2
+      StrikeDuration: 0.86
+      Reject:
+        Min: 0.65
+        Max: 1.15
+      RejectSpeed: 0.75
+      RejectCooldown:
+        Min: 2
+        Max: 3.6
+    Motion:
+      Beat:
+        Min: 0.14
+        Max: 0.22
+      Glide:
+        Min: 0.12
+        Max: 0.24
+      Kick: 0.18
+      Drive: 0.24
+      GlideDrop: 0.08
+      Cadence: 1.08
+      TurnPrep: 0.58
+      Micro:
+        BurstProbability: 0.1
+        CoastProbability: 0.1
+        PauseProbability: 0
+        BurstDuration:
+          Min: 0.22
+          Max: 0.36
+        BurstSpeed:
+          Min: 1.08
+          Max: 1.16
+        CoastDuration:
+          Min: 0.3
+          Max: 0.58
+        CoastSpeed:
+          Min: 0.94
+          Max: 0.99
+        PauseDuration:
+          Min: 0.1
+          Max: 0.18
+        PauseSpeed: 0.85
+        CruiseDuration:
+          Min: 2.2
+          Max: 4.6
+    Contest:
+      Trigger: 0.42
+      Evaluation:
+        Min: 0.34
+        Max: 0.62
+      Range: 1.25
+      YieldWeight: 0.02
+      StealWeight: 0.42
+      ChaseWeight: 0.46
+      YieldDuration:
+        Min: 0.42
+        Max: 0.7
+      StealDuration:
+        Min: 0.34
+        Max: 0.58
+      ChaseDuration:
+        Min: 0.38
+        Max: 0.66
+      YieldSpeed: 0.68
+      StealSpeed: 1.62
+      ChaseSpeed: 1.58
+      Flank: 0.42
+      CommitSteal: 0.1
+      CommitChase: 0.07
+      CommitYield: -0.08
+      Cooldown:
+        Min: 0.75
+        Max: 1.35
+    AfterBite:
+      Mode: 1
+      Duration:
+        Min: 0.82
+        Max: 1.2
+      SpeedK: 1.34
+      Carry: 0.96
+      Away: 0.05
+      Arc: 0.04
+      TurnBodyLengths: 1.75
+      Cooldown:
+        Min: 1.15
+        Max: 1.85
+      Depth: 0.38
+    ValidationOnly: 0
     Lane:
       Speed: 1.2
       Amplitude: 0.6
@@ -115,7 +231,7 @@ MonoBehaviour:
       Dorsal:
         U0: 0.28
         U1: 0.5
-        Height: 0.13
+        Height: 0.078
       Eye:
         U: 0.14
         Spread: 0.55
@@ -149,13 +265,17 @@ MonoBehaviour:
       WaveExponent: 1.6
       WaveHinge: 0
       WaveSpread: 0
-      FinRipple: 0
+      FinRipple: 0.013
       FinWave: 0
-      FinRate: 2.2
+      FinRate: 1.5
       ArmDrift: 0
       ArmSpring: 26
       ArmDamping: 5.4
       ArmGain: 1.5
       ArmForwardGain: 0.16
+      ArmClamp: 1.05
+      MantleJet: 0
+      HasMouthOffsetOverride: 0
+      MouthOffset: 0
       ArcBody: 1
-      Bank: 0.42
+      Bank: 0.4

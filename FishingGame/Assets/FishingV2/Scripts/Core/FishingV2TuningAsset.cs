@@ -20,6 +20,18 @@ namespace Fishing.V2
         public float LingerMin = 1.2f;
         public float LingerMax = 2.4f;
 
+        [Header("v25 feed and motion")]
+        [Min(0.05f)] public float AutoReelSeconds = 2.60f;
+        [Range(0.05f, 0.30f)] public float StartleDelayMin = 0.05f;
+        [Range(0.05f, 0.45f)] public float StartleDelayMax = 0.30f;
+        [Range(0, 2)] public int StartleMaxGenerations = 2;
+        [Range(0.01f, 0.60f)] public float PersonalSpaceHorizon = 0.22f;
+        [Range(0.01f, 0.50f)] public float HardOverlapMargin = 0.04f;
+        [Range(0.1f, 3f)] public float HardOverlapPush = 1.0f;
+        [Range(0.1f, 20f)] public float TurnPrepRiseRate = 8.5f;
+        [Range(0.1f, 20f)] public float TurnPrepFallRate = 4.0f;
+        [Range(0.01f, 1.5f)] public float TurnPrepMax = 0.55f;
+
         [Header("Steering")]
         public float MinTurnRadiusBodyLengths = 0.55f;
         [Range(0.15f, 1f)] public float CloseTurnBoost = 0.40f;
@@ -52,6 +64,13 @@ namespace Fishing.V2
         public float CatchLiftDuration = 0.30f;
         public float CatchFlyDuration = 0.55f;
         public float CatchArcHeight = 1.7f;
+        [Range(0f, 3f)] public float CatchLiftScale = 1.5f;
+        [Range(0f, 1f)] public float CatchShadowBaseOpacity = 0.34f;
+        [Range(0f, 1f)] public float CatchBounceOneHeight = 0.46f;
+        [Range(0f, 1f)] public float CatchBounceTwoHeight = 0.19f;
+        [Range(0.05f, 1f)] public float CatchBounceOneEnd = 0.46f;
+        [Range(0.05f, 1f)] public float CatchBounceTwoEnd = 0.78f;
+        [Range(0.10f, 1.20f)] public float CatchSettleDuration = 0.36f;
         public float BiteBackBase = 0.16f;
         public float BiteBackPerLength = 0.52f;
 

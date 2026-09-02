@@ -33,6 +33,7 @@ namespace Fishing.V2
         private float _speedNow;
         private float _sizeScale = 1f;
         private float _sizeCm;
+        private float _mouthOffset;
         // Presentation-only depth. Movement remains a 2D simulation; this value controls
         // the actual render Z, depth tint, and projected shadow relationship.
         private float _visualDepth;
@@ -70,6 +71,53 @@ namespace Fishing.V2
         private int _approachStage = -1;
         private ApproachStyle _approachStyle;
 
+        // v25 feed signature state. The lure/approach rules stay local to the agent so
+        // they remain deterministic and do not depend on a session singleton.
+        private bool _feedInitialized;
+        private float _feedCommitment;
+        private float _feedDecisionTimer;
+        private float _feedLastDistance = float.PositiveInfinity;
+        private float _feedCompetition;
+        private float _feedCarrySpeed;
+        private bool _strikeReady;
+        private float _rejectDuration;
+        private float _rejectAim;
+        private float _lureDelay = -1f;
+
+        // v25 contest state. A rival is an object reference, never a species lookup.
+        private FishAgentV2 _contestRival;
+        private float _contestTimer;
+        private float _contestDuration;
+        private float _contestCooldown;
+        private int _contestSide = 1;
+
+        // Roam Micro and propulsion cause the path speed and the visual beat together.
+        private int _microMode;
+        private float _microTimer;
+        private float _microDuration;
+        private float _microSpeed = 1f;
+        private float _microDrive = 1f;
+        private float _microSpeedTarget = 1f;
+        private float _microDriveTarget = 1f;
+        private float _propRate = 1f;
+        private float _propDrive = 1f;
+
+        // Loose-school spring state. The formation slot is a target, not the source of truth.
+        private Vector2 _schoolTarget;
+        private Vector2 _schoolPosition;
+        private Vector2 _schoolVelocity;
+
+        // Scheduled startle state. Position offsets are applied only when the event fires.
+        private float _startleDelay = -1f;
+        private float _startleCooldown;
+        private float _startleBreakTimer;
+        private float _startleStrength;
+        private float _startleTimeMultiplier = 1f;
+        private Vector2 _startleSource;
+        private Vector2 _startleTargetOffset;
+        private int _startleGeneration;
+        private bool _startleEmit;
+
         private float _spiralSide;
         private float _spiralOffset;
         private int _spiralPass;
@@ -90,6 +138,7 @@ namespace Fishing.V2
         private float _beat = 1f;
         private float _fin = 1f;
         private float _cStartRemaining;
+        private float _cStartDuration = 0.34f;
         private float _cStartBend;
         private float _cStartDirection;
         private float _cStartAwayAngle;
@@ -97,8 +146,12 @@ namespace Fishing.V2
         private float _armV;
         private float _armTuck = 1f;
         private float _armAmbient = 1f;
+        private float _armFlow;
+        private float _driftPhase;
         private float _delayedTurn;
         private float _seed;
+        private float _turnPrep;
+        private float _turnPrepTarget;
 
         private MeshFilter _meshFilter;
         private MeshRenderer _meshRenderer;
@@ -142,9 +195,19 @@ namespace Fishing.V2
         public float SpeedNow { get { return _speedNow; } }
         public float SizeScale { get { return _sizeScale; } }
         public float SizeCm { get { return _sizeCm; } }
+        public float MouthOffset { get { return _mouthOffset * _sizeScale; } }
+        public Vector2 MouthPosition
+        {
+            get
+            {
+                Vector2 heading = HeadingVector;
+                return _position + heading * MouthOffset;
+            }
+        }
         public float VisualDepth01 { get { return _visualDepth; } }
         public float WorldDepthZ { get { return transform.position.z; } }
         public bool IsCaught { get { return State == FishState.Caught; } }
+        public bool IsHooked { get { return State == FishState.Bite || State == FishState.Hooked; } }
         public bool IsFollower { get { return _leader != null; } }
         public FishAgentV2 Leader { get { return _leader; } }
         public Mesh SharedMesh { get { return _meshFilter != null ? _meshFilter.sharedMesh : null; } }
@@ -162,6 +225,13 @@ namespace Fishing.V2
             Vector2 formationOffset,
             FishingV2PresentationSettings presentation)
         {
+            if (species != null && species.DataVersion < FishingV2Catalog.CurrentDataVersion)
+            {
+                // Existing serialized assets predate the v25 fields. Normalize them at the
+                // runtime boundary so an old Spot asset cannot silently run generic defaults.
+                FishingV2Catalog.ApplyV25Defaults(species);
+            }
+
             _species = species;
             _tuning = tuning;
             _presentation = presentation;
@@ -177,15 +247,56 @@ namespace Fishing.V2
             _seed = RandomRange(0f, 1f);
             _curiosityTimer = RandomRange(0f, Mathf.Max(0.1f, tuning.CuriosityTick));
             _visualDepth = ResolveVisualDepth();
+            _feedInitialized = false;
+            _feedCommitment = 0.5f;
+            _feedDecisionTimer = 0f;
+            _feedLastDistance = float.PositiveInfinity;
+            _feedCompetition = 0f;
+            _feedCarrySpeed = 0f;
+            _strikeReady = false;
+            _rejectDuration = 0f;
+            _lureDelay = -1f;
+            _contestRival = null;
+            _contestTimer = 0f;
+            _contestDuration = 0f;
+            _contestCooldown = RandomRange(0.2f, 0.8f);
+            _microMode = -1;
+            _microTimer = 0f;
+            _microDuration = 0f;
+            _microSpeed = 1f;
+            _microDrive = 1f;
+            _microSpeedTarget = 1f;
+            _microDriveTarget = 1f;
+            _propRate = 1f;
+            _propDrive = 1f;
+            _schoolPosition = Vector2.zero;
+            _schoolTarget = Vector2.zero;
+            _schoolVelocity = Vector2.zero;
+            _startleDelay = -1f;
+            _startleCooldown = 0f;
+            _startleBreakTimer = 0f;
+            _startleStrength = 0f;
+            _startleTimeMultiplier = 1f;
+            _startleSource = Vector2.zero;
+            _startleTargetOffset = Vector2.zero;
+            _startleGeneration = 0;
+            _startleEmit = false;
+            _armFlow = 0f;
+            _driftPhase = RandomRange(0f, Tau);
+            _turnPrep = 0f;
+            _turnPrepTarget = 0f;
 
             SetupPath();
             _previousPosition = _position;
+            _schoolPosition = _position;
+            _schoolTarget = _position;
 
             _meshFilter = gameObject.GetComponent<MeshFilter>();
             if (_meshFilter == null) _meshFilter = gameObject.AddComponent<MeshFilter>();
             _meshRenderer = gameObject.GetComponent<MeshRenderer>();
             if (_meshRenderer == null) _meshRenderer = gameObject.AddComponent<MeshRenderer>();
             _meshFilter.sharedMesh = mesh != null ? mesh : FishMeshBuilderV2.BuildFallback("FishV2_Fallback");
+            _mouthOffset = FishMeshBuilderV2.GetMouthOffset(species, _meshFilter.sharedMesh);
             _meshRenderer.sharedMaterial = fishMaterial;
             gameObject.name = "FishV2_" + species.SpeciesId;
             transform.localScale = Vector3.one * _sizeScale;
@@ -230,7 +341,37 @@ namespace Fishing.V2
             dt = _tuning.ClampDelta(dt);
             _previousPosition = _position;
             _turnRate = 0f;
+
+            // Unity's destroyed-object equality can make a follower's cached leader look
+            // null while the managed reference is still present. Detach before the next
+            // movement solve so a caught leader cannot leave the follower on stale formation
+            // state and snap to an unrelated path origin.
+            if (!ReferenceEquals(_leader, null) && _leader == null)
+            {
+                BecomeIndependent();
+            }
+
             _cooldown = Mathf.Max(0f, _cooldown - dt);
+            _contestCooldown = Mathf.Max(0f, _contestCooldown - dt);
+            _startleCooldown = Mathf.Max(0f, _startleCooldown - dt);
+
+            TickScheduledStartle(dt, allFish);
+            if (_lureDelay >= 0f)
+            {
+                if (bobber == null || !bobber.IsInWater || State != FishState.Roam)
+                {
+                    _lureDelay = -1f;
+                }
+                else
+                {
+                    _lureDelay -= dt;
+                    if (_lureDelay <= 0f)
+                    {
+                        _lureDelay = -1f;
+                        BecomeInterested();
+                    }
+                }
+            }
 
             switch (State)
             {
@@ -243,9 +384,24 @@ namespace Fishing.V2
                     TickNotice(dt, bobber);
                     break;
                 case FishState.Interested:
-                    TickInterested(dt, now, bobber, onReachedBobber);
+                    TickInterested(dt, now, bobber, allFish, onReachedBobber);
+                    break;
+                case FishState.Strike:
+                    TickStrike(dt, now, bobber, allFish, onReachedBobber);
+                    break;
+                case FishState.Reject:
+                    TickReject(dt);
+                    break;
+                case FishState.Yield:
+                case FishState.Steal:
+                case FishState.Chase:
+                    TickContest(dt, now, bobber, allFish);
+                    break;
+                case FishState.AfterBite:
+                    TickAfterBite(dt, now, allFish);
                     break;
                 case FishState.Bite:
+                case FishState.Hooked:
                     TickBite(dt, bobber);
                     break;
                 case FishState.Linger:
@@ -255,6 +411,7 @@ namespace Fishing.V2
 
             TickCStart(dt);
             UpdateMotionTelemetry(dt);
+            UpdateDepth(dt);
             ApplyVisual(dt, now);
         }
 
@@ -280,7 +437,7 @@ namespace Fishing.V2
 
         public void BecomeInterested()
         {
-            if (IsCaught || State == FishState.Bite)
+            if (IsCaught || State == FishState.Bite || State == FishState.Hooked)
             {
                 return;
             }
@@ -292,6 +449,17 @@ namespace Fishing.V2
             _approachStyle = ApproachStyle.Direct;
             _orbitTimer = 0f;
             _breakOffTimer = 0f;
+            _feedInitialized = false;
+            _feedCommitment = 0.5f;
+            _feedDecisionTimer = 0f;
+            _feedLastDistance = float.PositiveInfinity;
+            _feedCompetition = 0f;
+            _feedCarrySpeed = 0f;
+            _strikeReady = false;
+            _contestRival = null;
+            _contestTimer = 0f;
+            _contestDuration = 0f;
+            _lureDelay = -1f;
         }
 
         public void EnterBite(Vector2 bitePosition)
@@ -301,11 +469,13 @@ namespace Fishing.V2
                 return;
             }
 
-            State = FishState.Bite;
+            State = FishState.Hooked;
             _stateTimer = 0f;
             _approachTimer = 0f;
             _bitePosition = bitePosition;
             _biteHeading = _heading;
+            _strikeReady = false;
+            _feedInitialized = false;
         }
 
         public void Release(float cooldown, float radiusMultiplier, float timeMultiplier)
@@ -329,12 +499,31 @@ namespace Fishing.V2
             _orbitTimer = 0f;
             _breakOffTimer = 0f;
             _startleOffset = Vector2.zero;
+            _startleDelay = -1f;
+            _startleBreakTimer = 0f;
+            _startleTimeMultiplier = 1f;
+            _startleEmit = false;
+            _startleTargetOffset = Vector2.zero;
+            _contestRival = null;
+            _contestTimer = 0f;
+            _contestDuration = 0f;
+            _feedInitialized = false;
+            _feedCommitment = 0.5f;
+            _feedDecisionTimer = 0f;
+            _feedLastDistance = float.PositiveInfinity;
+            _feedCompetition = 0f;
+            _feedCarrySpeed = 0f;
+            _strikeReady = false;
+            _lureDelay = -1f;
+            _schoolVelocity = Vector2.zero;
+            _schoolPosition = _position;
+            _schoolTarget = _position;
             ReanchorAtCurrentPosition();
         }
 
         public void ApplyStartle(Vector2 source, float radiusMultiplier, float timeMultiplier, bool resetInterest)
         {
-            if (IsCaught || State == FishState.Bite)
+            if (IsCaught || State == FishState.Bite || State == FishState.Hooked)
             {
                 return;
             }
@@ -354,22 +543,8 @@ namespace Fishing.V2
 
             away /= distance;
             float strength = (1f - distance / radius) * _species.StartleRadius * _tuning.StartleImpulse;
-            _startleOffset += away * strength;
-            float cap = Mathf.Min(_species.StartleRadius * 0.85f, Mathf.Max(0.05f, _tuning.StartleOffsetCap));
-            if (_startleOffset.magnitude > cap)
-            {
-                _startleOffset = _startleOffset.normalized * cap;
-            }
-
-            _stateTimer = Mathf.Max(_stateTimer, _species.StartleDuration * Mathf.Max(0.1f, timeMultiplier));
-            _cooldown = Mathf.Max(_cooldown, _species.StartleDuration * Mathf.Max(0.1f, timeMultiplier) * 0.8f);
-            State = FishState.Startle;
-
-            // C-start는 속도만 올리는 도피가 아니라, 접혔다가 펴지며 튀는 시각적 사건이다.
-            _cStartRemaining = 0.34f;
-            _cStartAwayAngle = Mathf.Atan2(away.y, away.x);
-            float angleDelta = WrapAngle(_cStartAwayAngle - _heading);
-            _cStartDirection = angleDelta >= 0f ? 1f : -1f;
+            float durationMultiplier = Mathf.Max(0.1f, timeMultiplier);
+            ScheduleStartle(_position - away * distance, strength, 0f, 0, durationMultiplier);
         }
 
         public void MarkCaught()
@@ -484,6 +659,12 @@ namespace Fishing.V2
             Vector2 basePosition;
             bool follower = _leader != null && !_leader.IsCaught;
 
+            if (State == FishState.Roam || State == FishState.Wary)
+            {
+                UpdateRoamMicro(dt);
+            }
+            UpdateStartleOffset(dt);
+
             if (follower)
             {
                 float cos = Mathf.Cos(_leader._heading);
@@ -491,23 +672,61 @@ namespace Fishing.V2
                 Vector2 rotatedOffset = new Vector2(
                     _formationOffset.x * cos - _formationOffset.y * sin,
                     _formationOffset.x * sin + _formationOffset.y * cos);
-                basePosition = _leader._position + rotatedOffset + new Vector2(
+                _schoolTarget = _leader._position + rotatedOffset + new Vector2(
                     Mathf.Sin(now * 0.7f + _formationNoise.x) * 0.12f,
                     Mathf.Sin(now * 0.9f + _formationNoise.y) * 0.12f);
+
+                if (_startleBreakTimer > 0f)
+                {
+                    // _position already contains the previous frame's startle offset. Remove
+                    // it before rebuilding the pose so the offset is not added repeatedly
+                    // while the agent is held in its C-start break.
+                    basePosition = _position - _avoidOffset - _startleOffset;
+                    _schoolVelocity = Vector2.zero;
+                }
+                else
+                {
+                    // Spring-damper following keeps the slot readable without freezing every
+                    // follower to the leader's transform.
+                    float spring = 7.5f;
+                    float damping = 4.2f;
+                    _schoolVelocity += (_schoolTarget - _schoolPosition) * spring * dt;
+                    _schoolVelocity *= Mathf.Clamp01(1f - damping * dt);
+                    _schoolPosition += _schoolVelocity * dt;
+                    basePosition = _schoolPosition;
+                }
             }
             else
             {
-                basePosition = TickPath(dt, now);
+                basePosition = _startleBreakTimer > 0f
+                    ? _position - _avoidOffset - _startleOffset
+                    : TickPath(dt, now);
             }
 
+            basePosition += ComputeSchoolSeparation(basePosition, allFish);
             UpdateAvoidance(basePosition, allFish, dt);
             _position = basePosition + _avoidOffset + _startleOffset;
-            _startleOffset *= Mathf.Pow(Mathf.Clamp(_tuning.StartleOffsetDecay, 0.001f, 0.999f), dt);
+            ResolveHardOverlap(allFish);
+
+            float breakTimerBefore = _startleBreakTimer;
+            _startleBreakTimer = Mathf.Max(0f, _startleBreakTimer - dt);
+            if (breakTimerBefore > 0f && _startleBreakTimer <= 0f)
+            {
+                // Resume the owned path from the actual post-break position. Otherwise a
+                // Lane/Loop/ Hover-Dash agent resumes from stale path state and snaps back
+                // several body lengths when the C-start hold ends.
+                Vector2 resumePosition = _position - _startleOffset;
+                _startleTargetOffset = Vector2.zero;
+                ReanchorAtPosition(resumePosition);
+                _previousPosition = _position;
+            }
 
             if (!follower && _species.PathType == FishPathType.Lane)
             {
-                WrapLaneIfNeeded();
+                WrapLaneIfNeeded(allFish);
             }
+
+            UpdateTurnPreparation(dt, follower);
 
             // 경로가 위치를 계산하더라도 머리 방향은 실제 진행 방향을 제한 선회로 따라가야 한다.
             // 방향을 위치에 즉시 대입하면 사행·랩 프레임에서 도리도리와 순간 반전이 생긴다.
@@ -564,6 +783,7 @@ namespace Fishing.V2
                         Roll(_species.CuriosityPerSecond))
                     {
                         BecomeInterested();
+                        NotifySchoolLure(allFish);
                     }
                 }
             }
@@ -571,9 +791,10 @@ namespace Fishing.V2
 
         private Vector2 TickPath(float dt, float now)
         {
+            float pathDt = dt * Mathf.Clamp(_microSpeed, 0.20f, 1.60f);
             if (_species.PathType == FishPathType.Lane)
             {
-                _pathTime += dt;
+                _pathTime += pathDt;
                 return EvaluateLane(_pathTime);
             }
 
@@ -581,11 +802,11 @@ namespace Fishing.V2
             {
                 float drift = _species.Loop.DriftSpeed;
                 _loopCenter += new Vector2(
-                    Mathf.Sin(now * 0.13f + _loopPhase) * drift * dt,
-                    Mathf.Cos(now * 0.11f + _loopPhase * 1.7f) * drift * 0.55f * dt);
+                    Mathf.Sin(now * 0.13f + _loopPhase) * drift * pathDt,
+                    Mathf.Cos(now * 0.11f + _loopPhase * 1.7f) * drift * 0.55f * pathDt);
                 _loopCenter.x = Mathf.Clamp(_loopCenter.x, _pond.xMin - _species.Loop.A * 0.55f, _pond.xMax + _species.Loop.A * 0.55f);
                 _loopCenter.y = Mathf.Clamp(_loopCenter.y, _pond.yMin - _species.Loop.B * 0.30f, _pond.yMax + _species.Loop.B * 0.30f);
-                _pathTime += dt;
+                _pathTime += pathDt;
                 return EvaluateLoop(_pathTime);
             }
 
@@ -597,20 +818,29 @@ namespace Fishing.V2
 
         private Vector2 EvaluateLane(float time)
         {
-            float period = Mathf.Max(0.05f, _species.Lane.Period);
-            float along = _species.Lane.Speed * time;
-            float lateral = _species.Lane.Amplitude * Mathf.Sin(Tau * time / period + _lanePhase);
-            Vector2 perpendicular = new Vector2(-_laneDirection.y, _laneDirection.x);
-            return _laneOrigin + _laneDirection * along + perpendicular * lateral;
+            return PathEvaluatorV2.EvaluateLane(
+                new PathEvaluatorV2.LaneState
+                {
+                    Origin = _laneOrigin,
+                    Direction = _laneDirection,
+                    Phase = _lanePhase,
+                    Time = time
+                },
+                _species.Lane,
+                time);
         }
 
         private Vector2 EvaluateLoop(float time)
         {
-            float angularSpeed = Tau / Mathf.Max(0.05f, _species.Loop.Period);
-            float phase = angularSpeed * time + _loopPhase;
-            return _loopCenter + new Vector2(
-                _species.Loop.A * Mathf.Cos(phase),
-                _species.Loop.B * Mathf.Sin(2f * phase));
+            return PathEvaluatorV2.EvaluateLoop(
+                new PathEvaluatorV2.LoopState
+                {
+                    Center = _loopCenter,
+                    Phase = _loopPhase,
+                    Time = time
+                },
+                _species.Loop,
+                time);
         }
 
         private void TickHover(float dt, float now)
@@ -714,23 +944,38 @@ namespace Fishing.V2
                 return;
             }
 
+            FeedSignature feed = GetFeedSignature();
             _stateTimer += dt;
             Vector2 toBobber = bobber.Position - _position;
             float distance = toBobber.magnitude;
-            float speed = Mathf.Max(_species.ApproachSpeed * 0.35f, _speedNow * 0.6f);
+            _feedCarrySpeed = Mathf.Max(0f, _speedNow) * Mathf.Clamp01(feed.Carry);
+            float noticeSpeed = _species.ApproachSpeed * 0.18f;
+            float retainedSpeed = _feedCarrySpeed * (1f - Mathf.Clamp01(feed.NoticeK));
+            float speed = Mathf.Max(noticeSpeed, retainedSpeed + noticeSpeed * Mathf.Clamp01(feed.NoticeK));
             _turnRate = SteerTowards(bobber.Position, speed, 0.9f, dt);
             MoveForward(speed, dt);
 
-            if (_stateTimer >= _tuning.NoticeDuration)
+            if (_stateTimer >= Mathf.Max(0.01f, feed.NoticeT))
             {
                 State = FishState.Interested;
                 _stateTimer = 0f;
                 _approachTimer = 0f;
                 _approachStage = -1;
+                _feedInitialized = true;
+                _feedCommitment = RandomRange(feed.Commit.Min, feed.Commit.Max);
+                _feedDecisionTimer = RandomRange(feed.Reconsider.Min, feed.Reconsider.Max);
+                _feedLastDistance = distance;
+                _feedCompetition = 0f;
+                _strikeReady = false;
             }
         }
 
-        private void TickInterested(float dt, float now, BobberV2 bobber, Action<FishAgentV2> onReachedBobber)
+        private void TickInterested(
+            float dt,
+            float now,
+            BobberV2 bobber,
+            IReadOnlyList<FishAgentV2> allFish,
+            Action<FishAgentV2> onReachedBobber)
         {
             if (bobber == null || !bobber.IsInWater)
             {
@@ -738,9 +983,47 @@ namespace Fishing.V2
                 return;
             }
 
+            FeedSignature feed = GetFeedSignature();
+            if (!_feedInitialized)
+            {
+                _feedInitialized = true;
+                _feedCommitment = RandomRange(feed.Commit.Min, feed.Commit.Max);
+                _feedDecisionTimer = RandomRange(feed.Reconsider.Min, feed.Reconsider.Max);
+                _feedLastDistance = Vector2.Distance(_position, bobber.Position);
+            }
+
             _stateTimer += dt;
             _approachTimer += dt;
             float distance = Vector2.Distance(_position, bobber.Position);
+
+            if (_contestCooldown <= 0f && TryBeginContest(bobber, allFish, distance))
+            {
+                return;
+            }
+
+            float progress = _feedLastDistance - distance;
+            _feedLastDistance = distance;
+            _feedDecisionTimer -= dt;
+            float strikeDistance = Mathf.Max(
+                feed.Arrival * 1.55f,
+                Mathf.Max(0.05f, _species.Visual.Length) * feed.StrikeBodyLengths);
+            if (_feedDecisionTimer <= 0f && distance > strikeDistance)
+            {
+                float close = Mathf.Clamp01(1f - distance / Mathf.Max(0.5f, _species.NoticeRadius));
+                float stalled = progress < 0.012f ? 1f : 0f;
+                _feedCompetition = Mathf.Lerp(_feedCompetition, ComputeLureCompetition(bobber, allFish, distance), Mathf.Min(1f, dt * 5f));
+                float social = _feedCompetition * feed.Competition;
+                float delta = close * 0.10f + social * 0.16f - feed.Doubt * (0.10f + stalled * 0.10f) + RandomRange(-0.035f, 0.035f);
+                _feedCommitment = Mathf.Clamp01(_feedCommitment + delta);
+                _feedDecisionTimer = RandomRange(feed.Reconsider.Min, feed.Reconsider.Max);
+                if (_feedCommitment < feed.QuitBelow)
+                {
+                    BeginReject(bobber.Position, feed);
+                    return;
+                }
+            }
+
+            _strikeReady = distance <= strikeDistance && _feedCommitment >= feed.StrikeMinimum;
             int stage = GetApproachStage(distance);
             ApproachStyle style = _species.ApproachPlan != null && _species.ApproachPlan.Length > 0
                 ? _species.ApproachPlan[Mathf.Clamp(stage, 0, _species.ApproachPlan.Length - 1)].Style
@@ -752,12 +1035,19 @@ namespace Fishing.V2
                 EnterApproachStyle(style, bobber.Position, distance);
             }
 
-            ApproachResult result = StepApproach(style, dt, now, bobber.Position, distance);
-            float speed = result.Speed;
+            ApproachResult result = _strikeReady
+                ? new ApproachResult(
+                    Mathf.Atan2(bobber.Position.y - _position.y, bobber.Position.x - _position.x),
+                    _species.ApproachSpeed * feed.StrikeSpeed,
+                    0.58f)
+                : StepApproach(style, dt, now, bobber.Position, distance);
+            float desiredSpeed = result.Speed * Mathf.Max(0.10f, feed.ApproachK);
+            desiredSpeed = Mathf.Max(desiredSpeed, _feedCarrySpeed * Mathf.Clamp01(feed.CarryApproach));
+            float speed = desiredSpeed;
             if (_tuning.EnableSpeedFit)
             {
                 float fitSpeed = _species.TurnRateDeg * DegreesToRadians * Mathf.Max(0.22f, distance) * _tuning.SpeedFitK;
-                speed = Mathf.Max(result.Speed * 0.22f, Mathf.Min(result.Speed, fitSpeed));
+                speed = Mathf.Max(desiredSpeed * 0.22f, Mathf.Min(desiredSpeed, fitSpeed));
             }
 
             _turnRate = SteerTowards(bobber.Position, speed, result.RadiusBodyLengths, dt, result.Aim);
@@ -786,7 +1076,7 @@ namespace Fishing.V2
                 MoveForward(result.Speed * 0.9f, dt);
             }
 
-            if (distance < _tuning.ArriveRadius)
+            if (distance < Mathf.Max(0.05f, feed.Arrival))
             {
                 if (onReachedBobber != null)
                 {
@@ -797,7 +1087,134 @@ namespace Fishing.V2
 
             if (_stateTimer > _tuning.ApproachTimeout)
             {
-                BeginLinger();
+                if (_feedCommitment < Mathf.Max(feed.QuitBelow + 0.12f, 0.48f))
+                {
+                    BeginReject(bobber.Position, feed);
+                }
+                else
+                {
+                    BeginLinger();
+                }
+            }
+        }
+
+        private void TickStrike(
+            float dt,
+            float now,
+            BobberV2 bobber,
+            IReadOnlyList<FishAgentV2> allFish,
+            Action<FishAgentV2> onReachedBobber)
+        {
+            if (bobber == null || !bobber.IsInWater)
+            {
+                ReturnToRoam(2f);
+                return;
+            }
+
+            FeedSignature feed = GetFeedSignature();
+            _stateTimer += dt;
+            float distance = Vector2.Distance(_position, bobber.Position);
+            float speed = Mathf.Max(_species.ApproachSpeed * feed.StrikeSpeed, _vSm * 0.88f);
+            _turnRate = SteerTowards(bobber.Position, speed, 0.58f, dt);
+            MoveForward(speed, dt);
+            if (distance <= Mathf.Max(0.05f, feed.Arrival))
+            {
+                // The legacy BobberV2 callback still accepts Interested only. Convert back
+                // for this integration seam; the post-water-merge hook path will make Strike
+                // a first-class contact state.
+                State = FishState.Interested;
+                if (onReachedBobber != null) onReachedBobber(this);
+            }
+            else if (_stateTimer > Mathf.Max(0.05f, feed.StrikeDuration))
+            {
+                BeginReject(bobber.Position, feed);
+            }
+        }
+
+        private void TickReject(float dt)
+        {
+            _stateTimer += dt;
+            float speed = Mathf.Max(_species.ApproachSpeed * GetFeedSignature().RejectSpeed, _vSm * 0.62f);
+            _turnRate = SteerAngle(_rejectAim, speed, 1.25f, dt);
+            MoveForward(speed, dt);
+            if (_stateTimer > _rejectDuration)
+            {
+                FeedSignature feed = GetFeedSignature();
+                ReturnToRoam(RandomRange(feed.RejectCooldown.Min, feed.RejectCooldown.Max));
+            }
+        }
+
+        private void TickContest(float dt, float now, BobberV2 bobber, IReadOnlyList<FishAgentV2> allFish)
+        {
+            if (bobber == null || !bobber.IsInWater)
+            {
+                State = FishState.Roam;
+                _contestRival = null;
+                ReanchorAtCurrentPosition();
+                return;
+            }
+
+            _contestTimer += dt;
+            ContestSignature contest = _species.Contest ?? new ContestSignature();
+            Vector2 target;
+            float speedMultiplier;
+            float radius;
+
+            if (State == FishState.Yield)
+            {
+                Vector2 away = _position - bobber.Position;
+                if (away.sqrMagnitude < 0.0001f) away = -HeadingVector;
+                target = _position + away.normalized * Mathf.Max(0.8f, _species.Visual.Length * 1.8f);
+                speedMultiplier = contest.YieldSpeed;
+                radius = 1.25f;
+            }
+            else if (State == FishState.Steal)
+            {
+                Vector2 toTarget = bobber.Position - _position;
+                Vector2 side = new Vector2(-toTarget.y, toTarget.x).normalized * _contestSide;
+                target = bobber.Position + side * Mathf.Max(0.25f, _species.Visual.Length * contest.Flank);
+                speedMultiplier = contest.StealSpeed;
+                radius = 0.72f;
+            }
+            else
+            {
+                FishAgentV2 rival = _contestRival;
+                if (rival == null || rival.IsCaught)
+                {
+                    State = FishState.Interested;
+                    _contestRival = null;
+                    _contestCooldown = RandomRange(contest.Cooldown.Min, contest.Cooldown.Max);
+                    return;
+                }
+
+                target = rival.Position - rival.HeadingVector * Mathf.Max(0.10f, rival.Species.Visual.Length * 0.32f);
+                speedMultiplier = contest.ChaseSpeed;
+                radius = 0.82f;
+            }
+
+            float speed = Mathf.Max(_species.ApproachSpeed * speedMultiplier, _vSm * 0.80f);
+            _turnRate = SteerTowards(target, speed, radius, dt);
+            MoveForward(speed, dt);
+            ResolveHardOverlap(allFish);
+
+            if (_contestTimer >= _contestDuration)
+            {
+                State = FishState.Interested;
+                _stateTimer = 0f;
+                _contestRival = null;
+                _contestCooldown = RandomRange(contest.Cooldown.Min, contest.Cooldown.Max);
+                _approachStage = -1;
+            }
+        }
+
+        private void TickAfterBite(float dt, float now, IReadOnlyList<FishAgentV2> allFish)
+        {
+            // The full after-bite callback is connected after the water-branch merge. Keep a
+            // safe state fallback here so a replay or test asset cannot strand an agent.
+            _stateTimer += dt;
+            if (_stateTimer > Mathf.Max(0.10f, _species.AfterBite != null ? _species.AfterBite.Duration.Max : 0.85f))
+            {
+                ReturnToRoam(_species.AfterBite != null ? _species.AfterBite.Cooldown.Min : 1.4f);
             }
         }
 
@@ -811,21 +1228,275 @@ namespace Fishing.V2
         private void TickLinger(float dt, float now)
         {
             _stateTimer += dt;
-            float speed = _species.ApproachSpeed * 0.28f;
-            float targetAngle = _heading + Mathf.Sin(now * 1.3f + _phase) * 1.2f;
+            FeedSignature feed = GetFeedSignature();
+            float speed = _species.ApproachSpeed * feed.LingerSpeed;
+            float targetAngle = _heading + Mathf.Sin(now * feed.LingerFreq + _phase) * feed.LingerYaw;
             _turnRate = SteerTowards(_position + AngleVector(targetAngle), speed, 1f, dt);
             MoveForward(speed, dt);
             if (_stateTimer > _lingerDuration)
             {
-                ReturnToRoam(3f);
+                ReturnToRoam(RandomRange(feed.RejectCooldown.Min, feed.RejectCooldown.Max));
             }
         }
 
         private void BeginLinger()
         {
+            FeedSignature feed = GetFeedSignature();
             State = FishState.Linger;
             _stateTimer = 0f;
-            _lingerDuration = RandomRange(_tuning.LingerMin, _tuning.LingerMax);
+            _lingerDuration = RandomRange(feed.Linger.Min, feed.Linger.Max);
+            _feedInitialized = false;
+            _strikeReady = false;
+        }
+
+        private FeedSignature GetFeedSignature()
+        {
+            return _species != null && _species.Feed != null ? _species.Feed : new FeedSignature();
+        }
+
+        private void BeginReject(Vector2 target, FeedSignature feed)
+        {
+            State = FishState.Reject;
+            _stateTimer = 0f;
+            _rejectDuration = RandomRange(feed.Reject.Min, feed.Reject.Max);
+            Vector2 away = _position - target;
+            if (away.sqrMagnitude < 0.0001f) away = -HeadingVector;
+            _rejectAim = Mathf.Atan2(away.y, away.x);
+            _feedInitialized = false;
+            _strikeReady = false;
+            _contestRival = null;
+            _approachStage = -1;
+        }
+
+        private float ComputeLureCompetition(BobberV2 bobber, IReadOnlyList<FishAgentV2> allFish, float distance)
+        {
+            if (bobber == null || allFish == null)
+            {
+                return 0f;
+            }
+
+            float pressure = 0f;
+            for (int i = 0; i < allFish.Count; i++)
+            {
+                FishAgentV2 other = allFish[i];
+                if (other == null || other == this || other.IsCaught || SharesSchoolWith(other))
+                {
+                    continue;
+                }
+
+                if (other.State != FishState.Interested &&
+                    other.State != FishState.Strike &&
+                    other.State != FishState.Linger &&
+                    other.State != FishState.Yield &&
+                    other.State != FishState.Steal &&
+                    other.State != FishState.Chase)
+                {
+                    continue;
+                }
+
+                float otherDistance = Vector2.Distance(other.Position, bobber.Position);
+                if (otherDistance > distance + 0.55f)
+                {
+                    continue;
+                }
+
+                float ahead = Mathf.Clamp01((distance - otherDistance + 0.20f) / Mathf.Max(0.35f, distance));
+                float stateWeight = other.State == FishState.Linger
+                    ? 0.92f
+                    : (other.State == FishState.Strike
+                        ? 0.82f
+                        : ((other.State == FishState.Steal || other.State == FishState.Chase) ? 0.68f : 0.42f));
+                pressure = Mathf.Max(pressure, Mathf.Clamp01(stateWeight + ahead * 0.45f));
+            }
+
+            return pressure;
+        }
+
+        private FishAgentV2 FindLureRival(BobberV2 bobber, IReadOnlyList<FishAgentV2> allFish, float distance, float range)
+        {
+            if (bobber == null || allFish == null)
+            {
+                return null;
+            }
+
+            FishAgentV2 best = null;
+            float bestDistance = float.PositiveInfinity;
+            for (int i = 0; i < allFish.Count; i++)
+            {
+                FishAgentV2 other = allFish[i];
+                if (other == null || other == this || other.IsCaught || SharesSchoolWith(other))
+                {
+                    continue;
+                }
+
+                if (other.State != FishState.Interested &&
+                    other.State != FishState.Strike &&
+                    other.State != FishState.Linger &&
+                    other.State != FishState.Steal &&
+                    other.State != FishState.Chase)
+                {
+                    continue;
+                }
+
+                float otherDistance = Vector2.Distance(other.Position, bobber.Position);
+                if (otherDistance > distance + range || otherDistance >= bestDistance)
+                {
+                    continue;
+                }
+
+                best = other;
+                bestDistance = otherDistance;
+            }
+
+            return best;
+        }
+
+        private bool TryBeginContest(BobberV2 bobber, IReadOnlyList<FishAgentV2> allFish, float distance)
+        {
+            ContestSignature contest = _species.Contest;
+            if (contest == null || allFish == null || _contestCooldown > 0f)
+            {
+                return false;
+            }
+
+            float pressure = ComputeLureCompetition(bobber, allFish, distance);
+            if (pressure < contest.Trigger)
+            {
+                return false;
+            }
+
+            FishAgentV2 rival = FindLureRival(bobber, allFish, distance, contest.Range);
+            if (rival == null)
+            {
+                return false;
+            }
+
+            float yieldWeight = Mathf.Max(0f, contest.YieldWeight);
+            float stealWeight = Mathf.Max(0f, contest.StealWeight);
+            float chaseWeight = Mathf.Max(0f, contest.ChaseWeight);
+            float total = yieldWeight + stealWeight + chaseWeight;
+            if (total <= 0.0001f || RandomRange(0f, 1f) > Mathf.Clamp01(pressure))
+            {
+                return false;
+            }
+
+            float roll = RandomRange(0f, total);
+            FishState mode;
+            if (roll < yieldWeight)
+            {
+                mode = FishState.Yield;
+                _contestDuration = RandomRange(contest.YieldDuration.Min, contest.YieldDuration.Max);
+            }
+            else if (roll < yieldWeight + stealWeight)
+            {
+                mode = FishState.Steal;
+                _contestDuration = RandomRange(contest.StealDuration.Min, contest.StealDuration.Max);
+            }
+            else
+            {
+                mode = FishState.Chase;
+                _contestDuration = RandomRange(contest.ChaseDuration.Min, contest.ChaseDuration.Max);
+            }
+
+            State = mode;
+            _contestRival = rival;
+            _contestTimer = 0f;
+            _contestSide = _random.NextDouble() < 0.5 ? -1 : 1;
+            _approachStage = -1;
+            return true;
+        }
+
+        private void NotifySchoolLure(IReadOnlyList<FishAgentV2> allFish)
+        {
+            FeedSignature feed = GetFeedSignature();
+            if (!feed.SchoolJoin || allFish == null || !IsInSchool())
+            {
+                return;
+            }
+
+            for (int i = 0; i < allFish.Count; i++)
+            {
+                FishAgentV2 other = allFish[i];
+                if (other == null || other == this || other.IsCaught || !SharesSchoolWith(other))
+                {
+                    continue;
+                }
+
+                if (other.State == FishState.Roam && other._lureDelay < 0f)
+                {
+                    other._lureDelay = other.RandomRange(feed.JoinDelay.Min, feed.JoinDelay.Max);
+                }
+            }
+        }
+
+        private bool IsInSchool()
+        {
+            return _leader != null || _species != null && _species.IsSchool;
+        }
+
+        private void UpdateRoamMicro(float dt)
+        {
+            MotionSignature motion = _species != null ? _species.Motion : null;
+            if (motion == null || motion.Micro == null)
+            {
+                _microSpeed = Mathf.Lerp(_microSpeed, 1f, Mathf.Min(1f, dt * 4f));
+                _microDrive = Mathf.Lerp(_microDrive, 1f, Mathf.Min(1f, dt * 4f));
+                _propRate = 1f;
+                _propDrive = 1f;
+                return;
+            }
+
+            if (_microMode < 0 || _microTimer <= 0f)
+            {
+                EnterRoamMicro(motion);
+            }
+
+            _microTimer -= dt;
+            float response = Mathf.Min(1f, dt * 4.5f);
+            _microSpeed = Mathf.Lerp(_microSpeed, _microSpeedTarget, response);
+            _microDrive = Mathf.Lerp(_microDrive, _microDriveTarget, Mathf.Min(1f, dt * 6f));
+            _propRate = Mathf.Clamp(0.72f + 0.58f * _microDrive, 0.38f, 1.42f);
+            _propDrive = Mathf.Clamp(_microDrive, 0.38f, 1.42f);
+        }
+
+        private void EnterRoamMicro(MotionSignature motion)
+        {
+            MotionMicroSignature micro = motion.Micro;
+            float roll = RandomRange(0f, 1f);
+            float burstLimit = Mathf.Clamp01(micro.BurstProbability);
+            float coastLimit = burstLimit + Mathf.Clamp01(micro.CoastProbability);
+            float pauseLimit = coastLimit + Mathf.Clamp01(micro.PauseProbability);
+
+            if (roll < burstLimit)
+            {
+                _microMode = 1;
+                _microDuration = RandomRange(micro.BurstDuration.Min, micro.BurstDuration.Max);
+                _microSpeedTarget = RandomRange(micro.BurstSpeed.Min, micro.BurstSpeed.Max);
+                _microDriveTarget = Mathf.Clamp(1f + motion.Kick * 0.55f, 0.40f, 1.42f);
+            }
+            else if (roll < coastLimit)
+            {
+                _microMode = 2;
+                _microDuration = RandomRange(micro.CoastDuration.Min, micro.CoastDuration.Max);
+                _microSpeedTarget = RandomRange(micro.CoastSpeed.Min, micro.CoastSpeed.Max);
+                _microDriveTarget = Mathf.Clamp(1f - motion.GlideDrop * 0.55f, 0.38f, 1.20f);
+            }
+            else if (roll < pauseLimit)
+            {
+                _microMode = 3;
+                _microDuration = RandomRange(micro.PauseDuration.Min, micro.PauseDuration.Max);
+                _microSpeedTarget = Mathf.Max(0.20f, micro.PauseSpeed);
+                _microDriveTarget = Mathf.Clamp(1f - motion.GlideDrop, 0.38f, 1.20f);
+            }
+            else
+            {
+                _microMode = 0;
+                _microDuration = RandomRange(micro.CruiseDuration.Min, micro.CruiseDuration.Max);
+                _microSpeedTarget = 1f;
+                _microDriveTarget = Mathf.Clamp(1f + motion.Drive * 0.25f, 0.38f, 1.42f);
+            }
+
+            _microTimer = Mathf.Max(0.05f, _microDuration);
         }
 
         private void EnterApproachStyle(ApproachStyle style, Vector2 target, float distance)
@@ -1007,6 +1678,8 @@ namespace Fishing.V2
             Vector2 sum = Vector2.zero;
             int count = 0;
             Vector2 referencePosition = basePosition + _avoidOffset + _startleOffset;
+            float horizon = Mathf.Clamp(_tuning.PersonalSpaceHorizon, 0.01f, 0.60f);
+            Vector2 predictedPosition = referencePosition + HeadingVector * Mathf.Max(0f, _speedNow) * horizon;
             for (int i = 0; i < allFish.Count; i++)
             {
                 FishAgentV2 other = allFish[i];
@@ -1015,9 +1688,14 @@ namespace Fishing.V2
                     continue;
                 }
 
-                Vector2 difference = referencePosition - other.Position;
+                float otherLength = other.Species != null && other.Species.Visual != null ? other.Species.Visual.Length : 1f;
+                float safeDistance = Mathf.Max(
+                    radius,
+                    (_species.Visual.Length + otherLength) * (0.62f + _tuning.HardOverlapMargin));
+                Vector2 otherPredicted = other.Position + other.HeadingVector * Mathf.Max(0f, other.SpeedNow) * horizon;
+                Vector2 difference = predictedPosition - otherPredicted;
                 float distanceSquared = difference.sqrMagnitude;
-                if (distanceSquared < 0.000001f || distanceSquared > radius * radius)
+                if (distanceSquared < 0.000001f || distanceSquared > safeDistance * safeDistance)
                 {
                     continue;
                 }
@@ -1029,9 +1707,8 @@ namespace Fishing.V2
                 }
 
                 float distance = Mathf.Sqrt(distanceSquared);
-                float otherLength = other.Species != null && other.Species.Visual != null ? other.Species.Visual.Length : 1f;
                 float yieldWeight = otherLength / Mathf.Max(0.01f, _species.Visual.Length + otherLength);
-                float weight = (1f - distance / radius) * yieldWeight / Mathf.Max(distance, 0.30f);
+                float weight = (1f - distance / safeDistance) * yieldWeight / Mathf.Max(distance, 0.30f);
                 sum += difference / distance * weight;
                 count++;
             }
@@ -1047,7 +1724,283 @@ namespace Fishing.V2
             _avoidOffset = Vector2.Lerp(_avoidOffset, _avoidTarget, Mathf.Min(1f, dt * _tuning.AvoidanceSmoothing));
         }
 
-        private void WrapLaneIfNeeded()
+        private Vector2 ComputeSchoolSeparation(Vector2 basePosition, IReadOnlyList<FishAgentV2> allFish)
+        {
+            if (_leader == null || allFish == null || _species == null || _species.Visual == null)
+            {
+                return Vector2.zero;
+            }
+
+            Vector2 separation = Vector2.zero;
+            int count = 0;
+            for (int i = 0; i < allFish.Count; i++)
+            {
+                FishAgentV2 other = allFish[i];
+                if (other == null || other == this || other.IsCaught || !SharesSchoolWith(other))
+                {
+                    continue;
+                }
+
+                float otherLength = other.Species != null && other.Species.Visual != null ? other.Species.Visual.Length : 1f;
+                float minimum = (_species.Visual.Length + otherLength) * 0.44f;
+                Vector2 difference = basePosition - other.Position;
+                float distance = difference.magnitude;
+                if (distance < 0.0001f || distance >= minimum)
+                {
+                    continue;
+                }
+
+                separation += difference / distance * ((minimum - distance) / minimum);
+                count++;
+            }
+
+            if (count == 0)
+            {
+                return Vector2.zero;
+            }
+
+            Vector2 result = separation / count * _species.Visual.Length * 0.70f;
+            float cap = _species.Visual.Length * 0.45f;
+            return result.magnitude > cap ? result.normalized * cap : result;
+        }
+
+        private void UpdateTurnPreparation(float dt, bool follower)
+        {
+            MotionSignature motion = _species != null ? _species.Motion : null;
+            if (motion == null || (State != FishState.Roam && State != FishState.Wary))
+            {
+                _turnPrepTarget = 0f;
+                _turnPrep = Mathf.Lerp(_turnPrep, 0f, Mathf.Min(1f, dt * _tuning.TurnPrepFallRate));
+                return;
+            }
+
+            float futureDelta = 0f;
+            if (follower && _leader != null && !_leader.IsCaught)
+            {
+                // Followers prepare from the leader's intent instead of independently
+                // sampling a path that they do not own.
+                futureDelta = _leader._turnRate * 0.18f;
+            }
+            else if (_species.PathType == FishPathType.Lane || _species.PathType == FishPathType.Loop)
+            {
+                Vector2 current;
+                Vector2 future;
+                float lookAhead = 0.18f * Mathf.Clamp(_microSpeed, 0.65f, 1.35f);
+                if (_species.PathType == FishPathType.Lane)
+                {
+                    current = EvaluateLane(_pathTime);
+                    future = EvaluateLane(_pathTime + lookAhead);
+                }
+                else
+                {
+                    current = EvaluateLoop(_pathTime);
+                    future = EvaluateLoop(_pathTime + lookAhead);
+                }
+
+                Vector2 delta = future - current;
+                if (delta.sqrMagnitude > 0.0001f)
+                {
+                    futureDelta = WrapAngle(Mathf.Atan2(delta.y, delta.x) - _heading);
+                }
+            }
+
+            // The preparation bends against the upcoming turn. tanh gives a smooth bound and
+            // avoids the visibly stuck shape caused by a hard clamp.
+            float tanh = (float)System.Math.Tanh(futureDelta * 1.6f);
+            _turnPrepTarget = -tanh * Mathf.Clamp(motion.TurnPrep, 0f, 1.5f) * _tuning.TurnPrepMax;
+            float rate = Mathf.Abs(_turnPrepTarget) > Mathf.Abs(_turnPrep)
+                ? _tuning.TurnPrepRiseRate
+                : _tuning.TurnPrepFallRate;
+            _turnPrep = Mathf.Lerp(_turnPrep, _turnPrepTarget, Mathf.Min(1f, dt * Mathf.Max(0.01f, rate)));
+        }
+
+        private void ResolveHardOverlap(IReadOnlyList<FishAgentV2> allFish)
+        {
+            if (!_tuning.EnableAvoidance || allFish == null || _species == null || _species.Visual == null)
+            {
+                return;
+            }
+
+            Vector2 correction = Vector2.zero;
+            int count = 0;
+            float bodyRadius = Mathf.Max(
+                0.055f,
+                _species.Visual.MaxWidth * 1.35f,
+                _species.Visual.Length * 0.075f);
+            for (int i = 0; i < allFish.Count; i++)
+            {
+                FishAgentV2 other = allFish[i];
+                if (other == null || other == this || other.IsCaught)
+                {
+                    continue;
+                }
+
+                // Fish on sufficiently different presentation layers may overlap in the
+                // 2D simulation without touching on screen. This is the same depth gate used
+                // by the v25 personal-space rule.
+                if (Mathf.Abs(_visualDepth - other._visualDepth) > 0.20f)
+                {
+                    continue;
+                }
+
+                if (other.Species == null || other.Species.Visual == null)
+                {
+                    continue;
+                }
+
+                float otherBodyRadius = Mathf.Max(
+                    0.055f,
+                    other.Species.Visual.MaxWidth * 1.35f,
+                    other.Species.Visual.Length * 0.075f);
+                float schoolScale = SharesSchoolWith(other) ? 0.46f : 0.58f;
+                float minimum = (bodyRadius + otherBodyRadius) * schoolScale;
+                Vector2 difference = _position - other.Position;
+                float distance = difference.magnitude;
+                if (distance >= minimum)
+                {
+                    continue;
+                }
+
+                if (distance <= 0.0001f)
+                {
+                    float angle = _seed * Mathf.PI * 2f;
+                    difference = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                    distance = 1f;
+                }
+
+                Vector2 direction = difference / distance;
+                float push = Mathf.Min(0.035f, (minimum - distance) * 0.22f);
+                correction += direction * push;
+                count++;
+            }
+
+            if (count > 0)
+            {
+                _position += correction / count * Mathf.Clamp(_tuning.HardOverlapPush, 0.1f, 3f);
+            }
+        }
+
+        private void UpdateStartleOffset(float dt)
+        {
+            bool keepOffset = _startleBreakTimer > 0f || State == FishState.Startle || State == FishState.Wary;
+            Vector2 target = keepOffset ? _startleTargetOffset : Vector2.zero;
+            float response = 1f - Mathf.Exp(-Mathf.Max(0.01f, dt) / 0.12f);
+            _startleOffset = Vector2.Lerp(_startleOffset, target, Mathf.Clamp01(response));
+
+            if (!keepOffset && _startleOffset.sqrMagnitude < 0.0001f)
+            {
+                _startleOffset = Vector2.zero;
+                _startleTargetOffset = Vector2.zero;
+            }
+        }
+
+        private bool ScheduleStartle(Vector2 source, float strength, float delay, int generation, float timeMultiplier)
+        {
+            if (IsCaught || State == FishState.Bite || State == FishState.Hooked || _startleCooldown > 0f)
+            {
+                return false;
+            }
+
+            if (_startleDelay >= 0f && _startleStrength >= strength && _startleDelay <= delay)
+            {
+                return false;
+            }
+
+            _startleDelay = Mathf.Max(0f, delay);
+            _startleStrength = Mathf.Clamp(strength, 0.05f, 1.20f);
+            _startleSource = source;
+            _startleGeneration = Mathf.Max(0, generation);
+            _startleTimeMultiplier = Mathf.Max(0.10f, timeMultiplier);
+            return true;
+        }
+
+        private void TickScheduledStartle(float dt, IReadOnlyList<FishAgentV2> allFish)
+        {
+            if (_startleDelay < 0f)
+            {
+                return;
+            }
+
+            _startleDelay -= dt;
+            if (_startleDelay > 0f)
+            {
+                return;
+            }
+
+            _startleDelay = -1f;
+            ActivateStartle();
+            if (_startleEmit)
+            {
+                PropagateStartle(allFish);
+                _startleEmit = false;
+            }
+        }
+
+        private void ActivateStartle()
+        {
+            Vector2 away = _position - _startleSource;
+            float distance = away.magnitude;
+            if (distance <= 0.001f)
+            {
+                away = -HeadingVector;
+            }
+            else
+            {
+                away /= distance;
+            }
+
+            float strength = Mathf.Clamp(_startleStrength, 0.05f, 1.20f);
+            float offset = _species.StartleRadius * _tuning.StartleImpulse * strength;
+            float cap = Mathf.Min(_species.StartleRadius * 0.85f, Mathf.Max(0.05f, _tuning.StartleOffsetCap));
+            // Store the route offset as a target. Applying it in one frame recreates the
+            // immediate impulse/teleport failure that v25 explicitly removes.
+            _startleTargetOffset = away * Mathf.Min(cap, offset);
+            _stateTimer = Mathf.Max(_stateTimer, _species.StartleDuration * _startleTimeMultiplier);
+            _cooldown = Mathf.Max(_cooldown, _species.StartleDuration * _startleTimeMultiplier * 0.8f);
+            _startleBreakTimer = 0.48f + 0.34f * strength;
+            State = FishState.Startle;
+
+            // C-start is a folded-then-released event, not a speed multiplier.
+            _cStartDuration = 0.30f + 0.09f * strength;
+            _cStartRemaining = _cStartDuration;
+            _cStartAwayAngle = Mathf.Atan2(away.y, away.x);
+            float angleDelta = WrapAngle(_cStartAwayAngle - _heading);
+            _cStartDirection = angleDelta >= 0f ? 1f : -1f;
+            _startleEmit = true;
+        }
+
+        private void PropagateStartle(IReadOnlyList<FishAgentV2> allFish)
+        {
+            if (allFish == null || _startleGeneration >= _tuning.StartleMaxGenerations)
+            {
+                return;
+            }
+
+            for (int i = 0; i < allFish.Count; i++)
+            {
+                FishAgentV2 other = allFish[i];
+                if (other == null || other == this || other.IsCaught ||
+                    (other.State != FishState.Roam && other.State != FishState.Wary) ||
+                    other._startleCooldown > 0f)
+                {
+                    continue;
+                }
+
+                float distance = Vector2.Distance(_position, other.Position);
+                float radius = Mathf.Max(0.60f, _species.StartleRadius * 0.72f + other.Species.StartleRadius * 0.42f);
+                if (distance >= radius)
+                {
+                    continue;
+                }
+
+                float atten = Mathf.Clamp01(1f - distance / radius);
+                float strength = Mathf.Clamp(_startleStrength * (0.35f + 0.65f * atten), 0.12f, 0.90f);
+                float delay = RandomRange(_tuning.StartleDelayMin, _tuning.StartleDelayMax);
+                other.ScheduleStartle(_position, strength, delay, _startleGeneration + 1, 1f);
+            }
+        }
+
+        private void WrapLaneIfNeeded(IReadOnlyList<FishAgentV2> allFish)
         {
             Vector2 next = _position;
             bool moved = false;
@@ -1079,10 +2032,37 @@ namespace Fishing.V2
                 _laneOrigin += delta;
                 _previousPosition += delta;
                 _position = next;
+
+                // A school wraps as one visual unit. Without shifting the follower's cached
+                // position and spring target, the leader crosses the seam while followers
+                // chase the old side of the pond and appear to teleport one by one.
+                if (allFish != null)
+                {
+                    for (int i = 0; i < allFish.Count; i++)
+                    {
+                        FishAgentV2 follower = allFish[i];
+                        if (follower == null || follower == this || follower._leader != this)
+                        {
+                            continue;
+                        }
+
+                        follower._position += delta;
+                        follower._previousPosition += delta;
+                        follower._schoolPosition += delta;
+                        follower._schoolTarget += delta;
+                        follower._avoidTarget = Vector2.zero;
+                        follower._avoidOffset = Vector2.zero;
+                    }
+                }
             }
         }
 
         private void ReanchorAtCurrentPosition()
+        {
+            ReanchorAtPosition(_position);
+        }
+
+        private void ReanchorAtPosition(Vector2 anchor)
         {
             if (_species.PathType == FishPathType.Lane)
             {
@@ -1090,7 +2070,7 @@ namespace Fishing.V2
                 _pathTime = 0f;
                 Vector2 perpendicular = new Vector2(-_laneDirection.y, _laneDirection.x);
                 float lateral = _species.Lane.Amplitude * Mathf.Sin(_lanePhase);
-                _laneOrigin = _position - perpendicular * lateral;
+                _laneOrigin = anchor - perpendicular * lateral;
             }
             else if (_species.PathType == FishPathType.Loop)
             {
@@ -1100,12 +2080,18 @@ namespace Fishing.V2
                 for (int i = 0; i < 12; i++)
                 {
                     float phase = RandomRange(0f, Tau);
-                    Vector2 center = _position - new Vector2(
+                    Vector2 center = anchor - new Vector2(
                         _species.Loop.A * Mathf.Cos(phase),
                         _species.Loop.B * Mathf.Sin(2f * phase));
                     center.x = Mathf.Clamp(center.x, _pond.xMin + _species.Loop.A * 0.55f + 0.6f, _pond.xMax - _species.Loop.A * 0.55f - 0.6f);
-                    center.y = Mathf.Clamp(center.y, _pond.yMin + _species.Loop.B + 0.6f, _pond.yMax - _species.Loop.B - 0.6f);
-                    float error = Vector2.Distance(center, _position - new Vector2(
+                    // Keep the re-anchor envelope identical to SetupPath. A stricter clamp
+                    // here makes a Loop near the pond edge lose its current phase and snap
+                    // when a startle/rejoin event rebuilds the path.
+                    center.y = Mathf.Clamp(
+                        center.y,
+                        _pond.yMin + _species.Loop.B * 0.60f + 0.4f,
+                        _pond.yMax - _species.Loop.B * 0.60f - 0.4f);
+                    float error = Vector2.Distance(center, anchor - new Vector2(
                         _species.Loop.A * Mathf.Cos(phase),
                         _species.Loop.B * Mathf.Sin(2f * phase)));
                     if (error < bestError)
@@ -1122,8 +2108,8 @@ namespace Fishing.V2
             }
             else
             {
-                _hoverPosition = _position;
-                _homePosition = _position;
+                _hoverPosition = anchor;
+                _homePosition = anchor;
                 _isDashing = false;
                 _hasHoverAim = false;
                 _hoverRemaining = RandomRange(_species.HoverDash.HoverTime.Min, _species.HoverDash.HoverTime.Max);
@@ -1134,7 +2120,12 @@ namespace Fishing.V2
             _avoidTarget = Vector2.zero;
             _avoidOffset = Vector2.zero;
             _hasCourseAngle = false;
-            _previousPosition = _position;
+            _previousPosition = anchor;
+            _schoolPosition = anchor;
+            _schoolTarget = anchor;
+            _schoolVelocity = Vector2.zero;
+            _turnPrep = 0f;
+            _turnPrepTarget = 0f;
         }
 
         private void TickCStart(float dt)
@@ -1142,7 +2133,7 @@ namespace Fishing.V2
             if (_cStartRemaining > 0f)
             {
                 _cStartRemaining = Mathf.Max(0f, _cStartRemaining - dt);
-                float u = 1f - _cStartRemaining / 0.34f;
+                float u = 1f - _cStartRemaining / Mathf.Max(0.20f, _cStartDuration);
                 _cStartBend = _cStartDirection * 0.46f * Mathf.Sin(Mathf.PI * Mathf.Min(u * 1.55f, 1f));
                 float burst = _species.ApproachSpeed * (0.35f + 2.4f * Mathf.Clamp01((u - 0.28f) / 0.42f));
                 _turnRate = SteerTowards(_position + AngleVector(_cStartAwayAngle), Mathf.Max(burst, 0.4f), 1.1f, dt, _cStartAwayAngle);
@@ -1164,10 +2155,20 @@ namespace Fishing.V2
             _turnSm = Mathf.Lerp(_turnSm, _turnRate, smoothTurn);
             _vAvg = Mathf.Lerp(_vAvg, _vSm, Mathf.Min(1f, dt * 0.25f));
 
+            MotionSignature motion = _species.Motion;
             float targetFrequency = _species.Visual.WaveFrequency;
-            float stateBeat = State == FishState.Notice ? 0.22f : State == FishState.Interested ? 1.8f : 1f;
-            if (State == FishState.Bite) stateBeat = 3.2f;
-            _phase += dt * targetFrequency * stateBeat * (0.9f + Mathf.Min(1.4f, _vSm * 0.5f)) * 5.2f;
+            float stateBeat = State == FishState.Notice ? 0.22f
+                : (State == FishState.Interested ? 1.8f
+                : (State == FishState.Strike ? 2.35f
+                : ((State == FishState.Bite || State == FishState.Hooked) ? 3.2f
+                : (State == FishState.AfterBite ? 1.85f : 1f))));
+            float cadence = motion != null ? Mathf.Max(0.05f, motion.Cadence) : 1f;
+            float propulsionCadence = _species.PathType == FishPathType.HoverDash
+                ? 0.90f + Mathf.Min(1.4f, _vSm * 0.5f)
+                : (0.72f + 0.58f * _propRate) * (0.90f + 0.10f * _propDrive);
+            float beatTarget = Mathf.Clamp(_propDrive, 0.38f, 1.42f);
+            _beat = Mathf.Lerp(_beat, beatTarget, Mathf.Min(1f, dt * 9f));
+            _phase += dt * targetFrequency * stateBeat * propulsionCadence * cadence * 5.2f;
 
             if (_species.Visual.ArmDrift > 0f)
             {
@@ -1176,13 +2177,23 @@ namespace Fishing.V2
                 float spring = Mathf.Max(0.1f, _species.Visual.ArmSpring);
                 float damping = Mathf.Max(0.1f, _species.Visual.ArmDamping);
                 _armV += (-spring * _armX - damping * _armV + lateralAcceleration * _species.Visual.ArmGain + forwardAcceleration * _species.Visual.ArmForwardGain) * dt;
-                _armX = Mathf.Clamp(_armX + _armV * dt, -0.85f, 0.85f);
+                float armClamp = Mathf.Max(0.05f, _species.Visual.ArmClamp);
+                _armX = Mathf.Clamp(_armX + _armV * dt, -armClamp, armClamp);
 
                 float drag = Mathf.Clamp01(_vSm / Mathf.Max(0.7f, _vAvg * 1.6f));
-                float tuckTarget = 1f - 0.82f * drag;
-                float tuckRate = tuckTarget < _armTuck ? 11f : 3.4f;
+                float tuckTarget = 1f - 0.58f * drag;
+                float tuckRate = tuckTarget < _armTuck ? 12f : 4f;
                 _armTuck = Mathf.Lerp(_armTuck, tuckTarget, Mathf.Min(1f, dt * tuckRate));
-                _armAmbient = Mathf.Lerp(_armAmbient, 1f - 0.80f * drag, Mathf.Min(1f, dt * 4f));
+                float ambientTarget = 0.75f + 0.25f * drag;
+                _armAmbient = Mathf.Lerp(_armAmbient, ambientTarget, Mathf.Min(1f, dt * 5f));
+                float speedRatio = Mathf.Max(0f, _vSm) / Mathf.Max(0.35f, _vAvg);
+                float flowTarget = Mathf.Clamp(speedRatio * 0.75f, 0f, 1.2f);
+                _armFlow = Mathf.Lerp(_armFlow, flowTarget, Mathf.Min(1f, dt * (flowTarget > _armFlow ? 6f : 3f)));
+                _driftPhase += dt * (0.75f + 3.2f * Mathf.Clamp(speedRatio, 0f, 3f));
+            }
+            else
+            {
+                _armFlow = Mathf.Lerp(_armFlow, 0f, Mathf.Min(1f, dt * 5f));
             }
 
             float ratio = Mathf.Max(0f, _vSm) / Mathf.Max(0.35f, _vAvg);
@@ -1205,6 +2216,44 @@ namespace Fishing.V2
             _roll = Mathf.Lerp(_roll, Mathf.Clamp(rollTarget, -0.75f, 0.75f), Mathf.Min(1f, dt * 6f));
             _delayedTurn = Mathf.Lerp(_delayedTurn, _turnSm, Mathf.Min(1f, dt * 2.2f));
             _vPrev = _vSm;
+        }
+
+        private void UpdateDepth(float dt)
+        {
+            float target = _visualDepth;
+            if (_species.VisualDepth.Min >= 0f && _species.VisualDepth.Max >= _species.VisualDepth.Min)
+            {
+                target = (_species.VisualDepth.Min + _species.VisualDepth.Max) * 0.5f;
+            }
+            else
+            {
+                target = Mathf.Clamp01(Mathf.Lerp(0.10f, 0.84f, (_species.Zone.x + _species.Zone.y) * 0.5f));
+            }
+
+            if (_leader != null && !_leader.IsCaught)
+            {
+                target = _leader._visualDepth;
+            }
+
+            switch (State)
+            {
+                case FishState.Interested:
+                    target = Mathf.Min(target, 0.10f);
+                    break;
+                case FishState.Strike:
+                case FishState.Bite:
+                case FishState.Hooked:
+                    target = Mathf.Min(target, 0.065f);
+                    break;
+                case FishState.AfterBite:
+                    if (_species.AfterBite != null) target = _species.AfterBite.Depth;
+                    break;
+                case FishState.Startle:
+                    target = Mathf.Clamp01(target + 0.10f);
+                    break;
+            }
+
+            _visualDepth = Mathf.Lerp(_visualDepth, Mathf.Clamp01(target), Mathf.Min(1f, dt * 2.2f));
         }
 
         private void ApplyVisual(float dt, float now)
@@ -1250,6 +2299,13 @@ namespace Fishing.V2
             _propertyBlock.SetFloat("_ArcBody", _species.Visual.ArcBody);
             _propertyBlock.SetFloat("_ArmSwing", -_armX);
             _propertyBlock.SetFloat("_ArmTuck", _armTuck);
+            // These properties are consumed by the v25 fish shader after the water-branch
+            // merge. Setting them here is harmless on the compatibility shader and keeps the
+            // CPU/render contract ready without touching the water-owned shader file now.
+            _propertyBlock.SetFloat("_ArmFlow", _armFlow);
+            _propertyBlock.SetFloat("_DriftPh", _driftPhase);
+            _propertyBlock.SetFloat("_MantleJet", _species.Visual.MantleJet ? 1f : 0f);
+            _propertyBlock.SetFloat("_TurnPrep", _turnPrep);
             _propertyBlock.SetFloat("_Pivot", _tuning.PivotU);
             _propertyBlock.SetFloat("_RimStrength", _presentation.RimStrength);
             _propertyBlock.SetFloat("_Depth", _visualDepth);

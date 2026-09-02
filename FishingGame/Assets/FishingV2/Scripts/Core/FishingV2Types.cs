@@ -19,7 +19,17 @@ namespace Fishing.V2
         Interested,
         Bite,
         Linger,
-        Caught
+        Caught,
+
+        // v25 states. The legacy values above remain serialized-compatible while the
+        // gameplay integration is moved behind the water-branch merge gate.
+        Strike,
+        Hooked,
+        Reject,
+        Yield,
+        Steal,
+        Chase,
+        AfterBite
     }
 
     public enum ApproachStyle
@@ -30,6 +40,15 @@ namespace Fishing.V2
         Wary,
         Spiral,
         Hesitate
+    }
+
+    public enum AfterBiteMode
+    {
+        Peel,
+        Pass,
+        School,
+        Arc,
+        Jet
     }
 
     [Serializable]
@@ -98,6 +117,99 @@ namespace Fishing.V2
             HasUntil = true;
             UntilDistance = untilDistance;
         }
+    }
+
+    [Serializable]
+    public sealed class FeedSignature
+    {
+        public float NoticeT = 0.30f;
+        [Range(0f, 1f)] public float NoticeK = 0.35f;
+        [Range(0f, 1f)] public float Carry = 0.60f;
+        public float ApproachK = 1f;
+        [Range(0f, 1f)] public float CarryApproach;
+        public FloatRange Linger = new FloatRange(2.2f, 5f);
+        public float LingerSpeed = 0.28f;
+        public float LingerYaw = 1.20f;
+        public float LingerFreq = 1.30f;
+        public bool SchoolJoin;
+        public FloatRange JoinDelay = new FloatRange(0.08f, 0.22f);
+        public float Arrival = 0.35f;
+        public FloatRange Commit = new FloatRange(0.62f, 0.86f);
+        public FloatRange Reconsider = new FloatRange(0.65f, 1.25f);
+        [Range(0f, 1f)] public float Doubt = 0.22f;
+        [Range(0f, 1f)] public float QuitBelow = 0.24f;
+        [Range(-1f, 1f)] public float Competition = 0.20f;
+        public float StrikeBodyLengths = 0.70f;
+        [Range(0f, 1f)] public float StrikeMinimum = 0.58f;
+        public float StrikeSpeed = 1.90f;
+        public float StrikeDuration = 0.55f;
+        public FloatRange Reject = new FloatRange(0.65f, 1.15f);
+        public float RejectSpeed = 0.75f;
+        public FloatRange RejectCooldown = new FloatRange(2f, 3.6f);
+    }
+
+    [Serializable]
+    public sealed class MotionMicroSignature
+    {
+        [Range(0f, 1f)] public float BurstProbability = 0.20f;
+        [Range(0f, 1f)] public float CoastProbability = 0.20f;
+        [Range(0f, 1f)] public float PauseProbability = 0.05f;
+        public FloatRange BurstDuration = new FloatRange(0.18f, 0.32f);
+        public FloatRange BurstSpeed = new FloatRange(1.15f, 1.30f);
+        public FloatRange CoastDuration = new FloatRange(0.40f, 0.80f);
+        public FloatRange CoastSpeed = new FloatRange(0.82f, 0.94f);
+        public FloatRange PauseDuration = new FloatRange(0.12f, 0.28f);
+        public float PauseSpeed = 0.50f;
+        public FloatRange CruiseDuration = new FloatRange(0.80f, 1.80f);
+    }
+
+    [Serializable]
+    public sealed class MotionSignature
+    {
+        public FloatRange Beat = new FloatRange(0.16f, 0.28f);
+        public FloatRange Glide = new FloatRange(0.30f, 0.60f);
+        public float Kick = 0.30f;
+        public float Drive = 0.40f;
+        public float GlideDrop = 0.20f;
+        public float Cadence = 1f;
+        public float TurnPrep = 1f;
+        public MotionMicroSignature Micro = new MotionMicroSignature();
+    }
+
+    [Serializable]
+    public sealed class ContestSignature
+    {
+        [Range(0f, 1f)] public float Trigger = 0.58f;
+        public FloatRange Evaluation = new FloatRange(0.34f, 0.62f);
+        public float Range = 1.25f;
+        [Range(0f, 1f)] public float YieldWeight = 0.18f;
+        [Range(0f, 1f)] public float StealWeight = 0.20f;
+        [Range(0f, 1f)] public float ChaseWeight = 0.14f;
+        public FloatRange YieldDuration = new FloatRange(0.42f, 0.70f);
+        public FloatRange StealDuration = new FloatRange(0.34f, 0.58f);
+        public FloatRange ChaseDuration = new FloatRange(0.38f, 0.66f);
+        public float YieldSpeed = 0.68f;
+        public float StealSpeed = 1.52f;
+        public float ChaseSpeed = 1.34f;
+        public float Flank = 0.42f;
+        public float CommitSteal = 0.10f;
+        public float CommitChase = 0.07f;
+        public float CommitYield = -0.08f;
+        public FloatRange Cooldown = new FloatRange(0.75f, 1.35f);
+    }
+
+    [Serializable]
+    public sealed class AfterBiteProfile
+    {
+        public AfterBiteMode Mode = AfterBiteMode.Peel;
+        public FloatRange Duration = new FloatRange(0.55f, 0.85f);
+        public float SpeedK = 1.15f;
+        [Range(0f, 1f)] public float Carry = 0.65f;
+        [Range(0f, 1f)] public float Away = 0.65f;
+        public float Arc = 0.18f;
+        public float TurnBodyLengths = 1f;
+        public FloatRange Cooldown = new FloatRange(1.4f, 2.4f);
+        [Range(0f, 1f)] public float Depth = 0.28f;
     }
 
     [Serializable]
@@ -237,6 +349,10 @@ namespace Fishing.V2
         public float ArmDamping = 5.4f;
         public float ArmGain = 1.5f;
         public float ArmForwardGain = 0.16f;
+        public float ArmClamp = 1.05f;
+        public bool MantleJet;
+        public bool HasMouthOffsetOverride;
+        public float MouthOffset;
         public float ArcBody = 1f;
         public float Bank = 0.42f;
     }
@@ -244,6 +360,7 @@ namespace Fishing.V2
     [Serializable]
     public sealed class FishSpeciesConfig
     {
+        public int DataVersion;
         public string SpeciesId = "fish";
         public string DisplayName = "물고기";
         public FishPathType PathType = FishPathType.Lane;
@@ -267,6 +384,13 @@ namespace Fishing.V2
         public float BiteWindow = 1.2f;
         public float TurnRateDeg = 200f;
         public float RespawnDelay;
+
+        [Header("v25 Signatures")]
+        public FeedSignature Feed = new FeedSignature();
+        public MotionSignature Motion = new MotionSignature();
+        public ContestSignature Contest = new ContestSignature();
+        public AfterBiteProfile AfterBite = new AfterBiteProfile();
+        public bool ValidationOnly;
 
         [Header("Movement")]
         public LanePathSettings Lane = new LanePathSettings();

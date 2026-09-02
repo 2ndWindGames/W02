@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9030868aea2bbd4b93befc0cfba3d83, type: 3}
+  m_Name: Spot_Validation_AllSpecies
+  m_EditorClassIdentifier: FishingV2::Fishing.V2.FishingSpotAsset
+  SpotId: validation_all_species
+  DisplayName: "\uAC80\uC99D \u2014 \uC804\uCCB4 \uC5B4\uC885"
+  SessionSeconds: 90
+  Species:
+  - {fileID: 11400000, guid: b8e8baf3835e1f546a7326ceeb39e2c1, type: 2}
+  - {fileID: 11400000, guid: 18598d63ce939b641823b89a591fbbaf, type: 2}
+  - {fileID: 11400000, guid: 78aefbb2969ea9142945ba01b2f90a91, type: 2}
+  - {fileID: 11400000, guid: 6df20279a833daa4596bcdfbe8326366, type: 2}
+  - {fileID: 11400000, guid: e72aeafc137b76f48868b66872cef358, type: 2}
+  - {fileID: 11400000, guid: 5b23edcb5d5765746a3276cdff09eb76, type: 2}
+  - {fileID: 11400000, guid: 2dd38d84f5041014f8c2f91f8a0c7b50, type: 2}
+  - {fileID: 11400000, guid: 2e0b38523077945438be7cbc568800b8, type: 2}

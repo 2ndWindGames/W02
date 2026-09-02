@@ -1,0 +1,276 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 698bb84bd4d29584f8e56784390f3b9d, type: 3}
+  m_Name: Fish_disc
+  m_EditorClassIdentifier: FishingV2::Fishing.V2.FishSpeciesAsset
+  Data:
+    DataVersion: 25
+    SpeciesId: disc
+    DisplayName: "\uCCAD\uB85D \uC811\uC2DC\uACE0\uAE30"
+    PathType: 1
+    BaseScore: 1
+    Zone: {x: 0.35, y: 0.9}
+    VisualDepth:
+      Min: 0.28
+      Max: 0.66
+    SpawnCount:
+      Min: 1
+      Max: 2
+    SizeCm:
+      Min: 12
+      Max: 22
+    StartleRadius: 1.4
+    StartleDuration: 0.55
+    CuriosityPerSecond: 0.045
+    LureChance: 0.4
+    MinNoticeRadius: 0
+    NoticeRadius: 2.8
+    ApproachSpeed: 2
+    BiteWindow: 1.2
+    TurnRateDeg: 160
+    RespawnDelay: 0
+    Feed:
+      NoticeT: 0.5
+      NoticeK: 0.24
+      Carry: 0.36
+      ApproachK: 0.8
+      CarryApproach: 0.04
+      Linger:
+        Min: 2
+        Max: 3.8
+      LingerSpeed: 0.14
+      LingerYaw: 0.88
+      LingerFreq: 0.78
+      SchoolJoin: 0
+      JoinDelay:
+        Min: 0.08
+        Max: 0.22
+      Arrival: 0.34
+      Commit:
+        Min: 0.34
+        Max: 0.66
+      Reconsider:
+        Min: 0.85
+        Max: 1.45
+      Doubt: 0.45
+      QuitBelow: 0.38
+      Competition: -0.28
+      StrikeBodyLengths: 0.7
+      StrikeMinimum: 0.7
+      StrikeSpeed: 1.45
+      StrikeDuration: 0.7
+      Reject:
+        Min: 0.65
+        Max: 1.15
+      RejectSpeed: 0.75
+      RejectCooldown:
+        Min: 2
+        Max: 3.6
+    Motion:
+      Beat:
+        Min: 0.34
+        Max: 0.54
+      Glide:
+        Min: 0.58
+        Max: 0.96
+      Kick: 0.22
+      Drive: 0.3
+      GlideDrop: 0.24
+      Cadence: 0.82
+      TurnPrep: 1.02
+      Micro:
+        BurstProbability: 0.18
+        CoastProbability: 0.18
+        PauseProbability: 0.16
+        BurstDuration:
+          Min: 0.28
+          Max: 0.48
+        BurstSpeed:
+          Min: 1.1
+          Max: 1.2
+        CoastDuration:
+          Min: 0.72
+          Max: 1.35
+        CoastSpeed:
+          Min: 0.78
+          Max: 0.9
+        PauseDuration:
+          Min: 0.26
+          Max: 0.58
+        PauseSpeed: 0.32
+        CruiseDuration:
+          Min: 1.25
+          Max: 2.6
+    Contest:
+      Trigger: 0.55
+      Evaluation:
+        Min: 0.34
+        Max: 0.62
+      Range: 1.25
+      YieldWeight: 0.56
+      StealWeight: 0.03
+      ChaseWeight: 0.02
+      YieldDuration:
+        Min: 0.42
+        Max: 0.7
+      StealDuration:
+        Min: 0.34
+        Max: 0.58
+      ChaseDuration:
+        Min: 0.38
+        Max: 0.66
+      YieldSpeed: 0.5
+      StealSpeed: 1.52
+      ChaseSpeed: 1.34
+      Flank: 0.42
+      CommitSteal: 0.1
+      CommitChase: 0.07
+      CommitYield: -0.08
+      Cooldown:
+        Min: 0.75
+        Max: 1.35
+    AfterBite:
+      Mode: 0
+      Duration:
+        Min: 0.82
+        Max: 1.22
+      SpeedK: 0.88
+      Carry: 0.52
+      Away: 0.76
+      Arc: 0.28
+      TurnBodyLengths: 1.18
+      Cooldown:
+        Min: 1.7
+        Max: 2.8
+      Depth: 0.32
+    ValidationOnly: 1
+    Lane:
+      Speed: 1.2
+      Amplitude: 0.6
+      Period: 8
+    Loop:
+      A: 1.7
+      B: 1.1
+      Period: 5.5
+      DriftSpeed: 0
+    HoverDash:
+      HoverTime:
+        Min: 1.6
+        Max: 3.4
+      DashDuration: 0.58
+      DashDistance:
+        Min: 1.8
+        Max: 2.9
+      HomeRadius: 3
+      DriftSpeed: 0.2
+      MinTurnRadiusBodyLengths: 0.85
+    ApproachPlan:
+    - Style: 4
+      HasUntil: 1
+      UntilDistance: 1
+    - Style: 0
+      HasUntil: 0
+      UntilDistance: 0
+    School:
+      Enabled: 0
+      GroupSize:
+        Min: 2
+        Max: 3
+      FormationRadius: 0.95
+      SoloChance: 1
+      GapMultiplier: 1.25
+    Visual:
+      Length: 0.66
+      MaxWidth: 0.255
+      MaxHeight: 0.15
+      WidthProfile:
+      - {x: 0, y: 0}
+      - {x: 0.05, y: 0.55}
+      - {x: 0.14, y: 0.85}
+      - {x: 0.28, y: 1}
+      - {x: 0.5, y: 1}
+      - {x: 0.68, y: 0.88}
+      - {x: 0.82, y: 0.58}
+      - {x: 0.92, y: 0.3}
+      - {x: 1, y: 0.12}
+      HeightProfile:
+      - {x: 0, y: 0}
+      - {x: 0.05, y: 0.58}
+      - {x: 0.14, y: 0.86}
+      - {x: 0.28, y: 1}
+      - {x: 0.5, y: 1}
+      - {x: 0.68, y: 0.88}
+      - {x: 0.82, y: 0.6}
+      - {x: 0.92, y: 0.32}
+      - {x: 1, y: 0.14}
+      Tail:
+        Length: 0.2
+        Spread: 0.19
+        Notch: 0.32
+        Cant: 0.05
+      Pectoral:
+        U0: 0.26
+        U1: 0.41
+        Length: 0.098
+        Sweep: 0.38
+        Segments: 3
+      Dorsal:
+        U0: 0.42
+        U1: 0.68
+        Height: 0.05
+      Eye:
+        U: 0.155
+        Spread: 0.58
+        Radius: 0.028
+        RingScale: 1.3
+      Arms:
+        Count: 8
+        Length: 0.4
+        Spread: 0.4
+        Width: 0.026
+        Segments: 7
+      Finlets:
+        Count: 4
+        U0: 0.66
+        U1: 0.88
+        Length: 0.02
+      Stripes:
+        Count: 4
+        U0: 0.14
+        U1: 0.78
+        Amount: 0.3
+        Width: 0.3
+      Spots: 0
+      BaseColor: {r: 0.14, g: 0.52, b: 0.52, a: 1}
+      EdgeColor: {r: 0.56, g: 0.86, b: 0.84, a: 1}
+      FinColor: {r: 0.18, g: 0.46, b: 0.48, a: 1}
+      FinletColor: {r: 0.18, g: 0.46, b: 0.48, a: 1}
+      WaveAmplitude: 0.8
+      WaveFrequency: 1.2
+      WaveLag: 2.4
+      WaveExponent: 1.6
+      WaveHinge: 0
+      WaveSpread: 0
+      FinRipple: 0.012
+      FinWave: 0
+      FinRate: 2
+      ArmDrift: 0
+      ArmSpring: 26
+      ArmDamping: 5.4
+      ArmGain: 1.5
+      ArmForwardGain: 0.16
+      ArmClamp: 1.05
+      MantleJet: 0
+      HasMouthOffsetOverride: 0
+      MouthOffset: 0
+      ArcBody: 1
+      Bank: 0.44

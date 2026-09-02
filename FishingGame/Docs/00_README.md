@@ -1,7 +1,7 @@
 # 낚시 게임 — 문서 인덱스
 
 > 최종 갱신: 2026-09-02 (Water Optics tuning pass)
-> 상태: **코어 루프 확정 · unified water composite/visible surface optics 튜닝 검증 · HTML motion/behavior 이식 대기** (§12 로드맵 참조)
+> 상태: **코어 루프 확정 · unified water composite/visible surface optics 튜닝 검증 · v25 데이터/이동 1차 이식 완료 · 물 브랜치 머지 후 상호작용 통합 대기** (§12 로드맵 참조)
 >
 > **v0.4 요약** — 운동 법칙 3 + 변형자 1로 재정리 / 사행 주기 2배 / 선회를 반경에서 뽑음(ω = v/R) /
 > 접근 방식 조립 신설 / 복어 → 오징어 / 튜닝 값은 `const` 가 아니라 SO 로 /
@@ -18,6 +18,7 @@
 | Art/fishgen.py | 어종 생성 원본. Blender 헤드리스. 여기 40줄이 어종 정의 전부 | 형태를 고칠 때 |
 | bite-bench.html | **입질 벤치** — 입질·회수·점수. §7 수치가 그대로 들어가 있고 플레이·튜닝 가능 | 수치 감 잡을 때, 규칙 바꿔볼 때 |
 | turn-bench.html | **선회 벤치** — 절차적 3D 메시 + 정점 휨. 선회·접근 방식의 정답. 브라우저로 바로 열림 | 이동·형태를 판단할 때 |
+| 06_v25_이관상태_v0.1.md | v25 HTML → Unity 이관 범위·브랜치 경계·검증 상태 | v25 이관 작업을 이어갈 때 |
 
 ---
 

@@ -13,10 +13,11 @@ MonoBehaviour:
   m_Name: Fish_salmon
   m_EditorClassIdentifier: FishingV2::Fishing.V2.FishSpeciesAsset
   Data:
+    DataVersion: 25
     SpeciesId: salmon
     DisplayName: "\uC5F0\uC5B4"
     PathType: 0
-    BaseScore: 1
+    BaseScore: 3
     Zone: {x: 0.05, y: 0.95}
     VisualDepth:
       Min: 0.2
@@ -37,6 +38,121 @@ MonoBehaviour:
     BiteWindow: 1.2
     TurnRateDeg: 200
     RespawnDelay: 0
+    Feed:
+      NoticeT: 0.44
+      NoticeK: 0.28
+      Carry: 0.5
+      ApproachK: 0.9
+      CarryApproach: 0.08
+      Linger:
+        Min: 1.7
+        Max: 3
+      LingerSpeed: 0.2
+      LingerYaw: 0.7
+      LingerFreq: 0.95
+      SchoolJoin: 0
+      JoinDelay:
+        Min: 0.08
+        Max: 0.22
+      Arrival: 0.36
+      Commit:
+        Min: 0.48
+        Max: 0.78
+      Reconsider:
+        Min: 0.8
+        Max: 1.4
+      Doubt: 0.34
+      QuitBelow: 0.3
+      Competition: -0.12
+      StrikeBodyLengths: 0.62
+      StrikeMinimum: 0.66
+      StrikeSpeed: 1.55
+      StrikeDuration: 0.62
+      Reject:
+        Min: 0.65
+        Max: 1.15
+      RejectSpeed: 0.75
+      RejectCooldown:
+        Min: 2
+        Max: 3.6
+    Motion:
+      Beat:
+        Min: 0.24
+        Max: 0.38
+      Glide:
+        Min: 0.45
+        Max: 0.82
+      Kick: 0.32
+      Drive: 0.4
+      GlideDrop: 0.2
+      Cadence: 0.94
+      TurnPrep: 0.9
+      Micro:
+        BurstProbability: 0.25
+        CoastProbability: 0.2
+        PauseProbability: 0.07
+        BurstDuration:
+          Min: 0.24
+          Max: 0.42
+        BurstSpeed:
+          Min: 1.17
+          Max: 1.28
+        CoastDuration:
+          Min: 0.65
+          Max: 1.2
+        CoastSpeed:
+          Min: 0.84
+          Max: 0.94
+        PauseDuration:
+          Min: 0.18
+          Max: 0.36
+        PauseSpeed: 0.58
+        CruiseDuration:
+          Min: 1.5
+          Max: 3.1
+    Contest:
+      Trigger: 0.62
+      Evaluation:
+        Min: 0.34
+        Max: 0.62
+      Range: 1.25
+      YieldWeight: 0.34
+      StealWeight: 0.08
+      ChaseWeight: 0.04
+      YieldDuration:
+        Min: 0.42
+        Max: 0.7
+      StealDuration:
+        Min: 0.34
+        Max: 0.58
+      ChaseDuration:
+        Min: 0.38
+        Max: 0.66
+      YieldSpeed: 0.58
+      StealSpeed: 1.52
+      ChaseSpeed: 1.34
+      Flank: 0.42
+      CommitSteal: 0.1
+      CommitChase: 0.07
+      CommitYield: -0.08
+      Cooldown:
+        Min: 0.75
+        Max: 1.35
+    AfterBite:
+      Mode: 0
+      Duration:
+        Min: 0.72
+        Max: 1.08
+      SpeedK: 1.02
+      Carry: 0.62
+      Away: 0.78
+      Arc: 0.22
+      TurnBodyLengths: 1.05
+      Cooldown:
+        Min: 1.5
+        Max: 2.4
+      Depth: 0.34
+    ValidationOnly: 0
     Lane:
       Speed: 1.15
       Amplitude: 0.58
@@ -107,7 +223,7 @@ MonoBehaviour:
       Dorsal:
         U0: 0.3
         U1: 0.56
-        Height: 0.11
+        Height: 0.066
       Eye:
         U: 0.165
         Spread: 0.57
@@ -141,13 +257,17 @@ MonoBehaviour:
       WaveExponent: 1.6
       WaveHinge: 0
       WaveSpread: 0
-      FinRipple: 0
+      FinRipple: 0.011
       FinWave: 0
-      FinRate: 2.2
+      FinRate: 1.9
       ArmDrift: 0
       ArmSpring: 26
       ArmDamping: 5.4
       ArmGain: 1.5
       ArmForwardGain: 0.16
+      ArmClamp: 1.05
+      MantleJet: 0
+      HasMouthOffsetOverride: 0
+      MouthOffset: 0
       ArcBody: 1
       Bank: 0.42
