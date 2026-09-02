@@ -18,6 +18,8 @@ Shader "FishingV2/WaterSurface"
         _BottomTexture ("Bottom / Organic Substrate", 2D) = "gray" {}
         _UnderwaterSceneTex ("Underwater Scene / Coherent Optical Layer", 2D) = "black" {}
         _UnderwaterComposite ("Underwater Composite Mode", Range(0, 1)) = 1
+        _UnderwaterUvScale ("Underwater Scene / UV Scale", Vector) = (1, 1, 0, 0)
+        _UnderwaterUvOffset ("Underwater Scene / UV Offset", Vector) = (0, 0, 0, 0)
         _BottomTextureScale ("Bottom / Texture Scale", Range(0.25, 3)) = 1.55
         _BottomTextureBlend ("Bottom / Texture Blend", Range(0, 1)) = 0.66
         _BottomTextureContrast ("Bottom / Texture Contrast", Range(0, 2)) = 1.08
@@ -25,20 +27,33 @@ Shader "FishingV2/WaterSurface"
         _OpticalDistortionStrength ("Optics / Surface Refraction", Range(0, 1)) = 0.42
         _OpticalDistortionScale ("Optics / Refraction Scale", Range(0.25, 2.5)) = 1.08
         _OpticalDistortionSpeed ("Optics / Refraction Speed", Range(0, 1)) = 0.18
+        // Profile-driven UV coefficient. 0.0035 is the approved gameplay value; the
+        // presentation profile pushes the same shared field to a visible undulation.
+        _RefractionCoefficient ("Optics / Refraction Coefficient (UV)", Range(0, 0.04)) = 0.0035
         _OpticalTime ("Optics / Unscaled Time", Float) = 0
         _OpticalCausticFloorBias ("Optics / Caustic Floor Bias", Range(0, 1)) = 0.78
         _LargeCausticColor ("Large Caustic Color", Color) = (0.045, 0.115, 0.105, 1)
-        _LargeCausticStrength ("Large Caustic Strength", Range(0, 2)) = 0.32
+        _LargeCausticStrength ("Large Caustic Strength", Range(0, 3)) = 0.32
         _LargeCausticScale ("Large Caustic Scale", Range(0.25, 3)) = 1.35
         _LargeCausticSpeed ("Large Caustic Speed", Range(0, 1)) = 0.06
         _MidCausticColor ("Mid Caustic Color", Color) = (0.075, 0.185, 0.155, 1)
-        _MidCausticStrength ("Mid Caustic Strength", Range(0, 2)) = 0.28
+        _MidCausticStrength ("Mid Caustic Strength", Range(0, 3)) = 0.28
         _MidCausticScale ("Mid Caustic Scale", Range(0.25, 3)) = 1.08
         _MidCausticSpeed ("Mid Caustic Speed", Range(0, 1)) = 0.18
         _MicroSurfaceColor ("Surface Micro Color", Color) = (0.022, 0.060, 0.058, 1)
-        _MicroSurfaceStrength ("Surface Micro Strength", Range(0, 2)) = 0.14
+        _MicroSurfaceStrength ("Surface Micro Strength", Range(0, 3)) = 0.14
         _SurfaceRippleColor ("Surface Ripple / Highlight Color", Color) = (0.040, 0.160, 0.180, 1)
-        _SurfaceRippleStrength ("Surface Ripple / Highlight Strength", Range(0, 2)) = 0.85
+        _SurfaceRippleStrength ("Surface Ripple / Highlight Strength", Range(0, 3)) = 0.85
+        // Presentation surface block. Every value here is neutral (0, or 1 where it is a
+        // multiplier) in the gameplay profile, so the approved water is unchanged.
+        _SurfaceShapeStrength ("Surface / Visible Ripple Shape", Range(0, 2)) = 0
+        _SurfaceHighlightStrength ("Surface / Highlight Multiplier", Range(0, 4)) = 1
+        _SurfaceSpecularStrength ("Surface / Stylized Specular", Range(0, 2)) = 0
+        _SurfaceSpecularColor ("Surface / Specular Color", Color) = (0.72, 0.88, 0.94, 1)
+        _SurfaceReflectionStrength ("Surface / Reflection Hint", Range(0, 2)) = 0
+        _SurfaceReflectionColor ("Surface / Reflection Sky Color", Color) = (0.42, 0.72, 0.86, 1)
+        _AbsorptionStrength ("Water / Absorption Multiplier", Range(0, 3)) = 1
+        _UnderwaterClarity ("Water / Underwater Clarity", Range(0, 1)) = 1
         _ClearZoneStrength ("Clear Observation Zone", Range(0, 2)) = 0.56
         _ClearZoneRadius ("Clear Zone Radius", Range(0.15, 2.5)) = 0.76
         _EdgeFogStrength ("Edge Depth / Fog", Range(0, 2)) = 0.42
@@ -97,9 +112,12 @@ Shader "FishingV2/WaterSurface"
                 float _BottomTextureContrast;
                 float _BottomSecondarySampleStrength;
                 float _UnderwaterComposite;
+                float4 _UnderwaterUvScale;
+                float4 _UnderwaterUvOffset;
                 float _OpticalDistortionStrength;
                 float _OpticalDistortionScale;
                 float _OpticalDistortionSpeed;
+                float _RefractionCoefficient;
                 float _OpticalTime;
                 float _OpticalCausticFloorBias;
                 float4 _LargeCausticColor;
@@ -114,6 +132,14 @@ Shader "FishingV2/WaterSurface"
                 float _MicroSurfaceStrength;
                 float4 _SurfaceRippleColor;
                 float _SurfaceRippleStrength;
+                float _SurfaceShapeStrength;
+                float _SurfaceHighlightStrength;
+                float _SurfaceSpecularStrength;
+                float4 _SurfaceSpecularColor;
+                float _SurfaceReflectionStrength;
+                float4 _SurfaceReflectionColor;
+                float _AbsorptionStrength;
+                float _UnderwaterClarity;
                 float _ClearZoneStrength;
                 float _ClearZoneRadius;
                 float _EdgeFogStrength;
@@ -161,12 +187,14 @@ Shader "FishingV2/WaterSurface"
                     time,
                     _OpticalDistortionScale,
                     _OpticalDistortionSpeed,
-                    _OpticalDistortionStrength);
+                    _OpticalDistortionStrength,
+                    _RefractionCoefficient,
+                    _SurfaceShapeStrength);
             }
 
             float OpticalLightField(float2 uv, float time)
             {
-                return WaterOpticsLight(uv, time, _OpticalDistortionScale, _OpticalDistortionSpeed);
+                return WaterOpticsLight(uv, time, _OpticalDistortionScale, _OpticalDistortionSpeed, _SurfaceShapeStrength);
             }
 
             // A small finite-difference estimate links the soft floor-light variation to the
@@ -175,7 +203,33 @@ Shader "FishingV2/WaterSurface"
             // not as a second animated line texture.
             float OpticalConcentration(float2 uv, float time)
             {
-                return WaterOpticsCurvature(uv, time, _OpticalDistortionScale, _OpticalDistortionSpeed);
+                return WaterOpticsCurvature(uv, time, _OpticalDistortionScale, _OpticalDistortionSpeed, _SurfaceShapeStrength);
+            }
+
+            // Clarity is a sampling property of the underwater image, not a colour grade. A
+            // small ring blur is enough to say "you are looking at this through a surface"
+            // during the above-water and dive states, and it collapses to the single original
+            // tap the moment clarity returns to 1.
+            float4 SampleUnderwaterScene(float2 uv, float margin)
+            {
+                float4 center = SAMPLE_TEXTURE2D(_UnderwaterSceneTex, sampler_UnderwaterSceneTex, uv);
+                float blur = saturate(1.0 - _UnderwaterClarity);
+                if (blur <= 0.001)
+                {
+                    return center;
+                }
+
+                float radius = blur * 0.0085;
+                float2 offsetX = float2(radius, 0.0);
+                float2 offsetY = float2(0.0, radius);
+                float2 low = margin.xx;
+                float2 high = (1.0 - margin).xx;
+                float4 accumulated = center * 0.36;
+                accumulated += SAMPLE_TEXTURE2D(_UnderwaterSceneTex, sampler_UnderwaterSceneTex, clamp(uv + offsetX, low, high)) * 0.16;
+                accumulated += SAMPLE_TEXTURE2D(_UnderwaterSceneTex, sampler_UnderwaterSceneTex, clamp(uv - offsetX, low, high)) * 0.16;
+                accumulated += SAMPLE_TEXTURE2D(_UnderwaterSceneTex, sampler_UnderwaterSceneTex, clamp(uv + offsetY, low, high)) * 0.16;
+                accumulated += SAMPLE_TEXTURE2D(_UnderwaterSceneTex, sampler_UnderwaterSceneTex, clamp(uv - offsetY, low, high)) * 0.16;
+                return accumulated;
             }
 
             // Continuous, slow substrate field. Unlike the moving caustic, this field stays
@@ -321,18 +375,27 @@ Shader "FishingV2/WaterSurface"
                 float edgeStart = max(0.12, _EdgeFogRadius);
                 float edgeFog = smoothstep(edgeStart, 0.92, radial);
                 float depth01 = saturate(1.0 - vertical);
-                float2 opticalUV = saturate(uv + OpticalDisplacement(uv, time));
+                // The RT is anchored to the camera view; the quad uv is anchored to the world.
+                // The session sends the exact affine map between the two, taken straight from
+                // the camera's own projection of the quad corners, so this handles the
+                // presentation zoom, the framing shift, and the camera's 180-degree yaw (which
+                // puts world +X on the left of the screen) in one step instead of assuming the
+                // two spaces happen to line up.
+                float2 sceneUV = _UnderwaterUvOffset.xy + uv * _UnderwaterUvScale.xy;
+                // Refraction is computed in quad uv, so it has to be carried into RT uv by the
+                // same map - otherwise a mirrored axis would displace the scene the wrong way.
+                float2 opticalUV = saturate(sceneUV + OpticalDisplacement(uv, time) * _UnderwaterUvScale.xy);
                 // Keep the final scene sample one or two pixels inside the RT edge. The
                 // overscanned bottom quad prevents most edge hits; this safe margin also keeps
                 // a displaced sample from exposing a bright clamped border.
                 const float sceneUvMargin = 0.002;
                 opticalUV = opticalUV * (1.0 - sceneUvMargin * 2.0) + sceneUvMargin;
-                float4 scene = SAMPLE_TEXTURE2D(_UnderwaterSceneTex, sampler_UnderwaterSceneTex, opticalUV);
+                float4 scene = SampleUnderwaterScene(opticalUV, sceneUvMargin);
 
                 // The RT already contains the continuous bottom, fish, shadow, and
                 // environment. Apply only a restrained volume tint here so every foreground
                 // element receives the same optical absorption after the shared refraction.
-                float absorption = saturate(edgeFog * 0.30 + (1.0 - clearZone) * 0.08 + depth01 * 0.04);
+                float absorption = saturate((edgeFog * 0.30 + (1.0 - clearZone) * 0.08 + depth01 * 0.04) * _AbsorptionStrength);
                 float3 absorptionTint = lerp(float3(0.97, 0.995, 1.03), float3(0.76, 0.89, 0.98), absorption);
                 float opticalLight = OpticalLightField(uv, time);
                 float3 sceneColor = scene.rgb * absorptionTint;
@@ -344,10 +407,66 @@ Shader "FishingV2/WaterSurface"
                     uv,
                     time,
                     _OpticalDistortionScale,
-                    _OpticalDistortionSpeed);
+                    _OpticalDistortionSpeed,
+                    _SurfaceShapeStrength);
                 float surfaceEnergy = smoothstep(0.24, 0.54, surfaceRipple);
-                sceneColor *= 1.0 + (surfaceEnergy - 0.42) * 0.13;
+                sceneColor *= 1.0 + (surfaceEnergy - 0.42) * 0.13 * _SurfaceHighlightStrength;
                 sceneColor += _SurfaceRippleColor.rgb * surfaceEnergy * _SurfaceRippleStrength * 0.42;
+
+                // ---- Presentation surface block -------------------------------------------
+                // All four terms below are gated by profile strengths that are 0 in the
+                // gameplay profile, so this block is inert during play and only becomes the
+                // subject of the frame while the water itself is the hero.
+                float shape = max(_SurfaceShapeStrength, 0.0);
+                if (shape > 0.0001)
+                {
+                    // Visible ripple shape: the lit flank brightens and the far flank darkens
+                    // around the same crest, which is what turns "abstract colour variation"
+                    // into a surface whose form can be read.
+                    float ridge = WaterOpticsRidgeBand(uv, time, _OpticalDistortionScale, _OpticalDistortionSpeed, shape);
+                    // Contrast first, tint second. A crest read as a brightness step keeps the
+                    // scene below visible through it; a crest read as added colour paints over
+                    // the water and the fish with it.
+                    //
+                    // The two flanks are not symmetric. A lit flank can take a large gain, but
+                    // the far flank of a real crest still transmits the water below it - drop
+                    // it as hard as you lift the other and the troughs turn into solid ribbons
+                    // that hide the fish.
+                    float ridgeGain = ridge > 0.0 ? 0.27 : 0.15;
+                    sceneColor *= 1.0 + ridge * ridgeGain * shape;
+                    sceneColor += _SurfaceRippleColor.rgb * saturate(ridge) * _SurfaceRippleStrength * 0.24 * shape;
+                }
+
+                if (_SurfaceSpecularStrength > 0.0001)
+                {
+                    float specular = WaterOpticsSpecular(uv, time, _OpticalDistortionScale, _OpticalDistortionSpeed, shape);
+                    sceneColor += _SurfaceSpecularColor.rgb * specular * _SurfaceSpecularStrength * 0.42;
+                }
+
+                if (_SurfaceReflectionStrength > 0.0001)
+                {
+                    // The reflection hint has to take something away as well as add: a surface
+                    // that returns sky necessarily hides part of what is beneath it. That
+                    // subtraction is the actual cue that a boundary exists.
+                    //
+                    // It cannot be driven by fresnel alone. Looking straight down at calm water
+                    // the fresnel term is genuinely almost zero, so a purely fresnel-driven
+                    // reflection disappears exactly in the state that needs it most. What the
+                    // eye actually reads from above is broad drifting sky glare, so the bulk of
+                    // this comes from the low-frequency surface lobes; fresnel only adds the
+                    // extra return on whatever crest flanks exist.
+                    float fresnel = WaterOpticsFresnel(uv, time, _OpticalDistortionScale, _OpticalDistortionSpeed, shape);
+                    // opticalLight is the broad surface field centred on 0.5, so a smoothstep
+                    // across it gives soft patches that actually cover part of the screen.
+                    // surfaceRipple was the wrong source: on a near-flat surface its whole
+                    // range sits around 0.15, below any threshold that would band it.
+                    float glare = smoothstep(0.40, 0.72, opticalLight);
+                    float reflection = saturate((0.14 + glare * 0.74 + fresnel * 0.38) * _SurfaceReflectionStrength);
+                    sceneColor = lerp(sceneColor, _SurfaceReflectionColor.rgb, saturate(reflection * 0.42));
+                    sceneColor += _SurfaceReflectionColor.rgb * glare * _SurfaceReflectionStrength * 0.10;
+                }
+                // ---------------------------------------------------------------------------
+
                 float sceneAlpha = saturate(scene.a);
                 float3 fallback = lerp(_DeepColor.rgb, _DeepWaterColor.rgb, saturate(edgeFog * 0.55 + depth01 * 0.12));
                 return half4(saturate(lerp(fallback, sceneColor, sceneAlpha)), 1.0);
@@ -432,14 +551,18 @@ Shader "FishingV2/WaterSurface"
                     opticalUV,
                     opticsTime,
                     _OpticalDistortionScale,
-                    _OpticalDistortionSpeed);
+                    _OpticalDistortionSpeed,
+                    _SurfaceShapeStrength);
                 causticVisibility *= lerp(0.88, 1.12, opticalConcentration);
                 float curvatureLight = smoothstep(0.24, 0.76, opticalConcentration);
+                // The stronger the visible surface, the more of the floor light comes directly
+                // from that surface's slope. This is what keeps "wave -> transmitted light ->
+                // bottom" legible as one causal chain in the presentation state.
                 float broadFloorLight = saturate(
                     0.50
                     + (large - 0.50) * 0.72
                     + (opticalConcentration - 0.50) * 1.10
-                    + (surfaceLight - 0.42) * 0.24);
+                    + (surfaceLight - 0.42) * (0.24 + 0.55 * max(_SurfaceShapeStrength, 0.0)));
                 float softFloorLight = saturate(mid * 0.58 + large * 0.10 + curvatureLight * 0.32);
 
                 // Convert the receiver signal into a restrained floor-light energy change as

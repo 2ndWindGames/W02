@@ -31,6 +31,9 @@ namespace Fishing.V2
         private float _now;
         private Vector2 _castStartPosition;
         private float _visualScale = 0.23f;
+        // Presentation-only multiplier on the physical ripple. The bobber ring stays a
+        // gameplay indicator; this is the water effect, so only this one follows the profile.
+        private float _physicalRippleStrength = 1f;
 
         private const int CastPathPointCount = 18;
 
@@ -84,6 +87,15 @@ namespace Fishing.V2
             _castStartPosition = Position;
             Phase = BobberPhase.Idle;
             UpdateVisual();
+        }
+
+        /// <summary>
+        /// 물 프로파일이 물리적 파문의 세기를 정한다. 금색 상호작용 링은 gameplay 지표라
+        /// 여기 영향을 받지 않는다.
+        /// </summary>
+        public void SetPhysicalRippleStrength(float strength)
+        {
+            _physicalRippleStrength = Mathf.Max(0f, strength);
         }
 
         public void RequestCast(Vector2 position)
@@ -251,7 +263,13 @@ namespace Fishing.V2
                 _ripple.transform.position = new Vector3(Position.x, Position.y, 0.40f);
                 float pulse = 0.5f + 0.5f * Mathf.Sin(_now * 2.1f + 0.6f);
                 _ripple.transform.localScale = Vector3.one * (0.74f + pulse * 0.42f);
-                Color rippleColor = new Color(0.32f, 0.78f, 0.76f, 0.36f + pulse * 0.18f);
+                // 세기를 1 위로 올릴 때만 선이 굵어진다. 1.0에서는 기존 값 그대로다.
+                _ripple.widthMultiplier = 0.026f * Mathf.Lerp(1f, 1.55f, Mathf.Clamp01(_physicalRippleStrength - 1f));
+                Color rippleColor = new Color(
+                    0.32f,
+                    0.78f,
+                    0.76f,
+                    Mathf.Clamp01((0.36f + pulse * 0.18f) * _physicalRippleStrength));
                 _ripple.startColor = rippleColor;
                 _ripple.endColor = rippleColor;
             }

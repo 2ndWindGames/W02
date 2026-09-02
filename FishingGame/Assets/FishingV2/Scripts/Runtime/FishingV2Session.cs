@@ -25,6 +25,10 @@ namespace Fishing.V2
         public FishingV2PresentationVariant PresentationVariant = FishingV2PresentationVariant.CalmObservation;
         [Tooltip("Optional visual-only overrides for water layers, fish depth response, and shadow depth influence.")]
         public FishingV2PresentationOverrides PresentationOverrides = new FishingV2PresentationOverrides();
+        [Header("Water presentation")]
+        [Tooltip("세션 시작 시 '물 밖 → 수면 통과 → gameplay' 연출을 재생한다. 끄면 처음부터 Gameplay 프로파일이다.")]
+        public bool PlaySessionDivePresentation = true;
+        public FishingV2DivePresentationTiming DivePresentationTiming = new FishingV2DivePresentationTiming();
         [Header("Presentation assets")]
         [Tooltip("Replaceable organic substrate source sampled by WaterSurfaceV2. The prototype generator can recreate the local PNG.")]
         public Texture2D BottomSubstrateTexture;
@@ -65,6 +69,16 @@ namespace Fishing.V2
         private int _underwaterTextureHeight;
         private Transform _environmentRoot;
         private FishingV2PresentationSettings _presentation;
+        private readonly FishingV2WaterPresentationDirector _waterPresentation = new FishingV2WaterPresentationDirector();
+        private FishingV2WaterProfile _gameplayWaterProfile;
+        private FishingV2WaterProfile _presentationWaterProfile;
+        private FishingV2WaterProfile _diveWaterProfile;
+        private FishingV2WaterProfile _activeWaterProfile;
+        private float _gameplayOrthographicSize;
+        private Vector3 _gameplayCameraPosition;
+        private float _maxCameraHeight = 1f;
+        private Vector2 _maxCameraFramingShift;
+        private Mesh _waterQuadMesh;
         private bool _standaloneSmoke;
         private bool _standaloneSmokeCastSent;
 
@@ -83,6 +97,12 @@ namespace Fishing.V2
         public IReadOnlyDictionary<string, int> Caught { get { return _caught; } }
         public HashSet<string> ReleaseSpecies { get { return _releaseSpecies; } }
         public FishingV2PresentationSettings Presentation { get { return _presentation; } }
+        public FishingV2WaterProfile ActiveWaterProfile { get { return _activeWaterProfile; } }
+        public FishingV2SessionPresentationPhase PresentationPhase { get { return _waterPresentation.Phase; } }
+        public float PresentationTime { get { return _waterPresentation.Time; } }
+        public float PresentationTotalSeconds { get { return _waterPresentation.TotalSeconds; } }
+        /// <summary>연출이 입력을 쥐고 있는 동안 true. gameplay 로직은 그대로 돌아간다.</summary>
+        public bool PresentationInputLocked { get { return _waterPresentation.InputLocked; } }
 
         private void Awake()
         {
@@ -138,6 +158,9 @@ namespace Fishing.V2
             // Render after simulation/visual updates and before the main camera presents the
             // frame. All underwater actors share this render, so the composite applies one
             // coherent surface deformation instead of nudging each actor independently.
+            // 프로파일을 먼저 바른다. 카메라 framing까지 여기서 정해져야 아래의
+            // SyncUnderwaterCamera가 같은 프레임의 프레이밍을 RT에 복사한다.
+            ApplyWaterProfile(_waterPresentation.Current);
             EnsureUnderwaterRenderTexture();
             SyncUnderwaterCamera();
             float opticalTime = GetOpticalTime();
@@ -184,6 +207,9 @@ namespace Fishing.V2
 
             dt = Tuning.ClampDelta(dt);
             _now += dt;
+            // 연출 시간축은 시뮬레이션과 같은 dt를 쓴다. 헤드리스 스텝에서도 결정론적으로
+            // 진행되어야 프레임 시퀀스를 재현할 수 있다.
+            _waterPresentation.Tick(dt);
 
             if (_running)
             {
@@ -229,6 +255,7 @@ namespace Fishing.V2
             }
             _presentation.WaterBottomTexture = BottomSubstrateTexture;
             _random = new System.Random(RandomSeed);
+            BuildWaterProfiles();
             BuildSpeciesTable();
             EnsureCamera();
             EnsureMaterials();
@@ -239,6 +266,7 @@ namespace Fishing.V2
             EnsureBobber();
             EnsureCatchFlight();
             CreateBasketMarkers();
+            ApplyWaterProfile(_waterPresentation.Current);
             _initialized = true;
         }
 
@@ -262,6 +290,16 @@ namespace Fishing.V2
             {
                 _bobber.ClearBite();
             }
+
+            if (PlaySessionDivePresentation)
+            {
+                _waterPresentation.PlayIntro();
+            }
+            else
+            {
+                _waterPresentation.ForceGameplay();
+            }
+            ApplyWaterProfile(_waterPresentation.Current);
 
             SpawnAllSpecies();
         }
@@ -303,6 +341,13 @@ namespace Fishing.V2
         private void HandleInput()
         {
             if (!_running || _camera == null)
+            {
+                return;
+            }
+
+            // 연출이 끝나기 전까지는 입력만 잠근다. 물고기 시뮬레이션·유인·입질 로직은
+            // 그대로 돌아가고 있으므로, 연출이 끝나면 진행 중이던 세션을 그대로 이어받는다.
+            if (_waterPresentation.InputLocked)
             {
                 return;
             }
@@ -621,6 +666,9 @@ namespace Fishing.V2
             // looks toward -Z. Eye discs are authored on the fish's +Z-facing surface.
             _camera.transform.position = new Vector3(_pond.center.x, _pond.center.y, 10f);
             _camera.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            // 승인된 gameplay framing. 연출은 항상 이 값에서 출발해서 이 값으로 돌아온다.
+            _gameplayOrthographicSize = _camera.orthographicSize;
+            _gameplayCameraPosition = _camera.transform.position;
             _camera.clearFlags = CameraClearFlags.SolidColor;
             _camera.backgroundColor = _presentation.WaterDeepColor;
         }
@@ -657,36 +705,74 @@ namespace Fishing.V2
 
         private void EnsureWater()
         {
-            GameObject water = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            water.name = "WaterSurfaceV2";
-            water.transform.SetParent(transform, false);
+            Vector2 quadSize = GetWaterQuadSize();
+            _waterQuadMesh = CreateWaterQuadMesh(GetWaterQuadUvSpan());
+
             // The camera is at +Z and looks toward -Z, so smaller Z values are farther away.
             // This quad is now the final water/underwater composite behind the HUD.
-            water.transform.position = new Vector3(_pond.center.x, _pond.center.y, -0.20f);
-            Vector2 surfaceSize = GetSurfaceSize();
-            water.transform.localScale = new Vector3(surfaceSize.x, surfaceSize.y, 1f);
-            MeshRenderer renderer = water.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = _waterMaterial;
-            Collider collider = water.GetComponent<Collider>();
-            if (collider != null) DestroyObjectSafe(collider);
-            _waterObject = water;
-
-            GameObject bottom = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            bottom.name = "UnderwaterBottomLayerV2";
-            bottom.transform.SetParent(transform, false);
-            bottom.layer = UnderwaterRenderLayer;
-            bottom.transform.position = new Vector3(_pond.center.x, _pond.center.y, -0.20f);
-            bottom.transform.localScale = new Vector3(surfaceSize.x, surfaceSize.y, 1f);
-            MeshRenderer bottomRenderer = bottom.GetComponent<MeshRenderer>();
-            bottomRenderer.sharedMaterial = _underwaterBottomMaterial;
-            Collider bottomCollider = bottom.GetComponent<Collider>();
-            if (bottomCollider != null) DestroyObjectSafe(bottomCollider);
-            _underwaterBottomObject = bottom;
+            _waterObject = CreateWaterQuad("WaterSurfaceV2", quadSize, _waterMaterial, 0);
+            _underwaterBottomObject = CreateWaterQuad(
+                "UnderwaterBottomLayerV2",
+                quadSize,
+                _underwaterBottomMaterial,
+                UnderwaterRenderLayer);
         }
 
+        private GameObject CreateWaterQuad(string quadName, Vector2 size, Material material, int layer)
+        {
+            GameObject quad = new GameObject(quadName);
+            quad.transform.SetParent(transform, false);
+            quad.layer = layer;
+            quad.transform.position = new Vector3(_pond.center.x, _pond.center.y, -0.20f);
+            quad.transform.localScale = new Vector3(size.x, size.y, 1f);
+            quad.AddComponent<MeshFilter>().sharedMesh = _waterQuadMesh;
+            quad.AddComponent<MeshRenderer>().sharedMaterial = material;
+            return quad;
+        }
+
+        /// <summary>
+        /// 물 쿼드는 연출에서 카메라가 가장 뒤로 빠졌을 때까지 덮어야 한다. 하지만 UV 0..1은
+        /// 여전히 gameplay 프레이밍의 사각형에 고정한다 — 그래야 바닥 재질·코스틱·수면 파형의
+        /// 월드 주파수가 gameplay에서 이전과 정확히 같다. 쿼드만 키우고 UV를 그대로 두면
+        /// 승인된 바닥 무늬가 통째로 굵어진다.
+        /// </summary>
+        private static Mesh CreateWaterQuadMesh(Vector2 uvSpan)
+        {
+            float uMin = 0.5f - 0.5f * uvSpan.x;
+            float uMax = 0.5f + 0.5f * uvSpan.x;
+            float vMin = 0.5f - 0.5f * uvSpan.y;
+            float vMax = 0.5f + 0.5f * uvSpan.y;
+            Mesh mesh = new Mesh { name = "FishingV2WaterQuad" };
+            mesh.vertices = new[]
+            {
+                new Vector3(-0.5f, -0.5f, 0f),
+                new Vector3(0.5f, -0.5f, 0f),
+                new Vector3(-0.5f, 0.5f, 0f),
+                new Vector3(0.5f, 0.5f, 0f)
+            };
+            mesh.uv = new[]
+            {
+                new Vector2(uMin, vMin),
+                new Vector2(uMax, vMin),
+                new Vector2(uMin, vMax),
+                new Vector2(uMax, vMax)
+            };
+            mesh.triangles = new[] { 0, 2, 1, 2, 3, 1 };
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        /// <summary>
+        /// UV 0..1이 덮는 월드 사각형. 승인된 gameplay 프레이밍 기준이며 연출 중에도 변하지 않는다.
+        /// 물고기 셰이더의 _PondSize도 이 값이어야 수면 필드와 물고기 광량이 같은 좌표계에 있다.
+        /// </summary>
         private Vector2 GetSurfaceSize()
         {
-            float visibleHeight = _camera != null ? _camera.orthographicSize * 2f : _pond.height;
+            float baseSize = _gameplayOrthographicSize > 0f
+                ? _gameplayOrthographicSize
+                : (_camera != null ? _camera.orthographicSize : _pond.height * 0.5f);
+            float visibleHeight = baseSize * 2f;
             float visibleWidth = _camera != null ? visibleHeight * _camera.aspect : _pond.width;
             // Leave a small world-space overscan around the camera view. Without it the last
             // raster row/column of the bottom RT can coincide with the composite quad edge and
@@ -695,6 +781,24 @@ namespace Fishing.V2
             return new Vector2(
                 Mathf.Max(_pond.width, visibleWidth + edgeOverscan),
                 Mathf.Max(_pond.height, visibleHeight + edgeOverscan));
+        }
+
+        private Vector2 GetWaterQuadSize()
+        {
+            Vector2 surfaceSize = GetSurfaceSize();
+            float height = Mathf.Max(1f, _maxCameraHeight);
+            return new Vector2(
+                surfaceSize.x * height + Mathf.Abs(_maxCameraFramingShift.x) * 2f,
+                surfaceSize.y * height + Mathf.Abs(_maxCameraFramingShift.y) * 2f);
+        }
+
+        private Vector2 GetWaterQuadUvSpan()
+        {
+            Vector2 surfaceSize = GetSurfaceSize();
+            Vector2 quadSize = GetWaterQuadSize();
+            return new Vector2(
+                quadSize.x / Mathf.Max(0.01f, surfaceSize.x),
+                quadSize.y / Mathf.Max(0.01f, surfaceSize.y));
         }
 
         private static float GetOpticalTime()
@@ -868,6 +972,238 @@ namespace Fishing.V2
             if (material.HasProperty("_OpticalDistortionStrength")) material.SetFloat("_OpticalDistortionStrength", presentation.WaterOpticalDistortionStrength);
             if (material.HasProperty("_PondCenter")) material.SetVector("_PondCenter", new Vector4(_pond.center.x, _pond.center.y, 0f, 0f));
             if (material.HasProperty("_PondSize")) material.SetVector("_PondSize", new Vector4(surfaceSize.x, surfaceSize.y, 0f, 0f));
+        }
+
+        // ---------------------------------------------------------------------------------
+        // Water presentation profiles
+        // ---------------------------------------------------------------------------------
+
+        private void BuildWaterProfiles()
+        {
+            _gameplayWaterProfile = FishingV2WaterProfile.Gameplay(_presentation);
+            _presentationWaterProfile = FishingV2WaterProfile.PresentationAboveWater(_presentation);
+            _diveWaterProfile = FishingV2WaterProfile.DiveTransition(_presentation);
+
+            // 물 쿼드 크기를 정하기 전에 알아야 하는 값이라 프로파일과 같이 뽑는다.
+            _maxCameraHeight = Mathf.Max(
+                _gameplayWaterProfile.CameraHeight,
+                Mathf.Max(_presentationWaterProfile.CameraHeight, _diveWaterProfile.CameraHeight));
+            _maxCameraFramingShift = new Vector2(
+                Mathf.Max(
+                    Mathf.Abs(_gameplayWaterProfile.CameraFramingShift.x),
+                    Mathf.Max(
+                        Mathf.Abs(_presentationWaterProfile.CameraFramingShift.x),
+                        Mathf.Abs(_diveWaterProfile.CameraFramingShift.x))),
+                Mathf.Max(
+                    Mathf.Abs(_gameplayWaterProfile.CameraFramingShift.y),
+                    Mathf.Max(
+                        Mathf.Abs(_presentationWaterProfile.CameraFramingShift.y),
+                        Mathf.Abs(_diveWaterProfile.CameraFramingShift.y))));
+
+            _waterPresentation.Configure(
+                _gameplayWaterProfile,
+                _presentationWaterProfile,
+                _diveWaterProfile,
+                DivePresentationTiming);
+        }
+
+        /// <summary>
+        /// 프로파일 하나를 화면에 바른다. 상태 전환이 여기 한 곳만 지나므로 새 연출을 붙일 때
+        /// 머티리얼 프로퍼티 이름을 다시 찾아다닐 필요가 없다.
+        /// </summary>
+        private void ApplyWaterProfile(FishingV2WaterProfile profile)
+        {
+            _activeWaterProfile = profile;
+
+            if (_waterMaterial != null)
+            {
+                SetFloatIfPresent(_waterMaterial, "_OpticalDistortionStrength", profile.RefractionStrength);
+                SetFloatIfPresent(_waterMaterial, "_OpticalDistortionScale", profile.RefractionScale);
+                SetFloatIfPresent(_waterMaterial, "_OpticalDistortionSpeed", profile.RefractionSpeed);
+                SetFloatIfPresent(_waterMaterial, "_RefractionCoefficient", profile.RefractionCoefficient);
+                SetFloatIfPresent(_waterMaterial, "_SurfaceRippleStrength", profile.SurfaceRippleStrength);
+                SetFloatIfPresent(_waterMaterial, "_SurfaceShapeStrength", profile.SurfaceShapeStrength);
+                SetFloatIfPresent(_waterMaterial, "_SurfaceHighlightStrength", profile.SurfaceHighlightStrength);
+                SetFloatIfPresent(_waterMaterial, "_SurfaceSpecularStrength", profile.SurfaceSpecularStrength);
+                SetColorIfPresent(_waterMaterial, "_SurfaceSpecularColor", profile.SurfaceSpecularColor);
+                SetFloatIfPresent(_waterMaterial, "_SurfaceReflectionStrength", profile.SurfaceReflectionStrength);
+                SetColorIfPresent(_waterMaterial, "_SurfaceReflectionColor", profile.SurfaceReflectionColor);
+                SetFloatIfPresent(_waterMaterial, "_AbsorptionStrength", profile.WaterAbsorptionStrength);
+                SetFloatIfPresent(_waterMaterial, "_UnderwaterClarity", profile.UnderwaterClarity);
+                UpdateUnderwaterSceneMapping();
+            }
+
+            if (_underwaterBottomMaterial != null)
+            {
+                // 바닥 레이어는 RT 안에서 먼저 그려진다. 굴절은 최종 합성에서 한 번만 걸어야
+                // 이중으로 휘지 않으므로 여기서는 강도를 0으로 두고, 같은 수면 필드를 공유하도록
+                // scale/speed/shape만 맞춘다.
+                SetFloatIfPresent(_underwaterBottomMaterial, "_OpticalDistortionStrength", 0f);
+                SetFloatIfPresent(_underwaterBottomMaterial, "_OpticalDistortionScale", profile.RefractionScale);
+                SetFloatIfPresent(_underwaterBottomMaterial, "_OpticalDistortionSpeed", profile.RefractionSpeed);
+                SetFloatIfPresent(_underwaterBottomMaterial, "_RefractionCoefficient", profile.RefractionCoefficient);
+                SetFloatIfPresent(_underwaterBottomMaterial, "_SurfaceShapeStrength", profile.SurfaceShapeStrength);
+                SetFloatIfPresent(_underwaterBottomMaterial, "_LargeCausticStrength", profile.LargeCausticStrength);
+                SetFloatIfPresent(_underwaterBottomMaterial, "_MidCausticStrength", profile.MidCausticStrength);
+                SetFloatIfPresent(_underwaterBottomMaterial, "_MicroSurfaceStrength", profile.MicroSurfaceStrength);
+            }
+
+            if (_fishMaterial != null)
+            {
+                SetFloatIfPresent(_fishMaterial, "_OpticalDistortionScale", profile.RefractionScale);
+                SetFloatIfPresent(_fishMaterial, "_OpticalDistortionSpeed", profile.RefractionSpeed);
+                SetFloatIfPresent(_fishMaterial, "_SurfaceShapeStrength", profile.SurfaceShapeStrength);
+                SetFloatIfPresent(_fishMaterial, "_WaterLightInfluence", profile.FishLightInfluence);
+            }
+
+            if (_bobber != null)
+            {
+                _bobber.SetPhysicalRippleStrength(profile.PhysicalRippleStrength);
+            }
+
+            ApplyCameraPresentation(profile);
+        }
+
+        /// <summary>
+        /// 물 쿼드의 UV(월드 고정)와 수중 RT의 UV(카메라 고정)를 잇는 아핀 변환을 카메라의
+        /// 투영에서 직접 뽑아 셰이더에 넘긴다.
+        ///
+        /// 두 좌표계는 원래부터 같지 않았다. 카메라가 Euler(0,180,0)이라 transform.right가
+        /// (-1,0,0)이고, 그래서 월드 +X가 화면 왼쪽에 그려진다. 합성이 RT를 월드 고정 UV로
+        /// 샘플링하는 동안 수중 레이어만 좌우가 뒤집혀 나왔고, 직접 렌더되는 바구니 마커와
+        /// 어긋나 있었다 — 화면 왼쪽을 클릭하면 찌가 오른쪽에 뜨는 상태였다.
+        ///
+        /// 코너 두 개를 카메라로 투영해서 매핑을 구하면 반전·줌·프레이밍 이동이 한 번에 맞고,
+        /// 나중에 카메라 규약이 또 바뀌어도 이 함수가 따라간다.
+        /// </summary>
+        private void UpdateUnderwaterSceneMapping()
+        {
+            if (_waterMaterial == null)
+            {
+                return;
+            }
+
+            Camera projection = _underwaterCamera != null ? _underwaterCamera : _camera;
+            if (projection == null)
+            {
+                return;
+            }
+
+            Vector2 half = GetSurfaceSize() * 0.5f;
+            Vector3 minCorner = new Vector3(_pond.center.x - half.x, _pond.center.y - half.y, 0f);
+            Vector3 maxCorner = new Vector3(_pond.center.x + half.x, _pond.center.y + half.y, 0f);
+            Vector3 minViewport = projection.WorldToViewportPoint(minCorner);
+            Vector3 maxViewport = projection.WorldToViewportPoint(maxCorner);
+
+            // sceneUV = offset + quadUV * scale. 축이 뒤집혀 있으면 scale이 음수로 나온다.
+            Vector2 scale = new Vector2(maxViewport.x - minViewport.x, maxViewport.y - minViewport.y);
+            SetVectorIfPresent(_waterMaterial, "_UnderwaterUvScale", new Vector4(scale.x, scale.y, 0f, 0f));
+            SetVectorIfPresent(_waterMaterial, "_UnderwaterUvOffset", new Vector4(minViewport.x, minViewport.y, 0f, 0f));
+        }
+
+        /// <summary>
+        /// 탑다운 직교 카메라에서 "물에서 얼마나 떨어져 있는가"는 orthographicSize다.
+        /// z를 밀어봐야 직교 투영은 화면이 그대로라, 높이를 z로 흉내내지 않는다.
+        /// </summary>
+        private void ApplyCameraPresentation(FishingV2WaterProfile profile)
+        {
+            if (_camera == null || _gameplayOrthographicSize <= 0f)
+            {
+                return;
+            }
+
+            _camera.orthographicSize = _gameplayOrthographicSize * Mathf.Max(0.05f, profile.CameraHeight);
+            Vector3 position = _gameplayCameraPosition;
+            position.x += profile.CameraFramingShift.x;
+            position.y += profile.CameraFramingShift.y;
+            _camera.transform.position = position;
+            // RT 카메라를 같은 호출 안에서 맞춰 둔다. 안 그러면 디버그/스크럽으로 프로파일만
+            // 바꿨을 때 수중 RT가 이전 프레이밍으로 남아 화면 가장자리에 테두리가 생긴다.
+            SyncUnderwaterCamera();
+            // 카메라가 움직였으므로 쿼드 UV -> RT UV 매핑도 다시 잡는다.
+            UpdateUnderwaterSceneMapping();
+        }
+
+        // ---------------------------------------------------------------------------------
+        // Debug / A-B controls
+        // ---------------------------------------------------------------------------------
+
+        /// <summary>
+        /// 디버그 컨트롤은 이미 살아 있는 런타임에만 붙는다. 에디트 모드에서 부르면
+        /// InitializeRuntime()이 런타임 오브젝트를 씬에 만들어 저장 대상으로 남는다.
+        /// </summary>
+        private bool EnsureDebugRuntime()
+        {
+            if (_initialized)
+            {
+                return true;
+            }
+
+            if (!Application.isPlaying)
+            {
+                Debug.LogWarning("Fishing V2 water presentation: 재생 중에만 프로파일을 바꿀 수 있다.");
+                return false;
+            }
+
+            InitializeRuntime();
+            return _initialized;
+        }
+
+        [ContextMenu("Water presentation/Force Gameplay profile")]
+        public void ForceGameplayWaterProfile()
+        {
+            if (!EnsureDebugRuntime()) return;
+            _waterPresentation.ForceGameplay();
+            ApplyWaterProfile(_waterPresentation.Current);
+        }
+
+        [ContextMenu("Water presentation/Force Presentation profile")]
+        public void ForcePresentationWaterProfile()
+        {
+            if (!EnsureDebugRuntime()) return;
+            _waterPresentation.ForcePresentation();
+            ApplyWaterProfile(_waterPresentation.Current);
+        }
+
+        [ContextMenu("Water presentation/Force Dive peak profile")]
+        public void ForceDiveWaterProfile()
+        {
+            if (!EnsureDebugRuntime()) return;
+            _waterPresentation.ForceDivePeak();
+            ApplyWaterProfile(_waterPresentation.Current);
+        }
+
+        [ContextMenu("Water presentation/Play dive transition")]
+        public void PlayDiveTransition()
+        {
+            if (!EnsureDebugRuntime()) return;
+            _waterPresentation.PlayIntro();
+            ApplyWaterProfile(_waterPresentation.Current);
+        }
+
+        /// <summary>
+        /// 연출 시간축의 한 지점을 직접 지정한다. 프레임 시퀀스 캡처가 프레임률과 무관해진다.
+        /// </summary>
+        public void ScrubDivePresentation(float time)
+        {
+            if (!EnsureDebugRuntime()) return;
+            _waterPresentation.ScrubTo(time);
+            ApplyWaterProfile(_waterPresentation.Current);
+        }
+
+        private static void SetFloatIfPresent(Material material, string property, float value)
+        {
+            if (material != null && material.HasProperty(property)) material.SetFloat(property, value);
+        }
+
+        private static void SetColorIfPresent(Material material, string property, Color value)
+        {
+            if (material != null && material.HasProperty(property)) material.SetColor(property, value);
+        }
+
+        private static void SetVectorIfPresent(Material material, string property, Vector4 value)
+        {
+            if (material != null && material.HasProperty(property)) material.SetVector(property, value);
         }
 
         private void EnsureFishRoot()
@@ -1077,6 +1413,8 @@ namespace Fishing.V2
 
         private void OnDestroy()
         {
+            DestroyObjectSafe(_waterQuadMesh);
+            _waterQuadMesh = null;
             DestroyObjectSafe(_bobberRingMaterial);
             _bobberRingMaterial = null;
             DestroyObjectSafe(_bobberRippleMaterial);
@@ -1135,6 +1473,10 @@ namespace Fishing.V2
 
             GUI.color = new Color(_presentation.AccentColor.r, _presentation.AccentColor.g, _presentation.AccentColor.b, 0.78f);
             GUI.Label(new Rect(Screen.width - 190f, 14f, 178f, 22f), _presentation.DisplayName);
+            GUI.color = new Color(0.62f, 0.78f, 0.82f, 0.72f);
+            GUI.Label(
+                new Rect(Screen.width - 250f, 34f, 238f, 20f),
+                "water · " + _waterPresentation.Phase + " · " + _activeWaterProfile.DisplayName);
 
             float promptY = _presentation.ShowSpeciesCounters ? 74f + _caught.Count * 18f : 82f;
             GUI.color = new Color(0.78f, 0.88f, 0.89f, 0.95f);

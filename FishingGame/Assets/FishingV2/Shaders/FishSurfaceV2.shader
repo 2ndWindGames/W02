@@ -33,6 +33,10 @@ Shader "FishingV2/FishSurface"
         _OpticalDistortionScale ("Water Optical Scale", Range(0.25, 2.5)) = 1.08
         _OpticalDistortionSpeed ("Water Optical Speed", Range(0, 1)) = 0.18
         _OpticalDistortionStrength ("Water Optical Strength", Range(0, 1)) = 0.42
+        // Same shared surface field as WaterSurfaceV2. Passing the presentation shape here
+        // keeps the fish light response on the same crests as the visible surface above them.
+        _SurfaceShapeStrength ("Water Surface Shape", Range(0, 2)) = 0
+        _WaterLightInfluence ("Water Light Influence", Range(0, 4)) = 1
         _PondCenter ("Pond Center", Vector) = (0, 0, 0, 0)
         _PondSize ("Pond Size", Vector) = (16, 9, 0, 0)
         _LightDirection ("Light Direction", Vector) = (-0.36, 0.58, 0.73, 0)
@@ -108,6 +112,8 @@ Shader "FishingV2/FishSurface"
                 float _OpticalDistortionScale;
                 float _OpticalDistortionSpeed;
                 float _OpticalDistortionStrength;
+                float _SurfaceShapeStrength;
+                float _WaterLightInfluence;
                 float4 _PondCenter;
                 float4 _PondSize;
                 float4 _LightDirection;
@@ -187,7 +193,8 @@ Shader "FishingV2/FishSurface"
                     saturate(waterUV),
                     _OpticalTime,
                     _OpticalDistortionScale,
-                    _OpticalDistortionSpeed);
+                    _OpticalDistortionSpeed,
+                    _SurfaceShapeStrength);
                 return output;
             }
 
@@ -223,7 +230,7 @@ Shader "FishingV2/FishSurface"
                 // Shallow fish catch a small amount of the same surface-light field as the
                 // floor. This is a value modulation only; the fish transform is untouched.
                 half shallowWeight = 1.0h - depth;
-                half fishLightModulation = (input.waterLight - 0.5h) * 2.0h * 0.060h * shallowWeight;
+                half fishLightModulation = (input.waterLight - 0.5h) * 2.0h * 0.060h * (half)_WaterLightInfluence * shallowWeight;
                 color *= 1.0h + fishLightModulation;
 
                 half rim = 1.0h - abs(normal.z);
