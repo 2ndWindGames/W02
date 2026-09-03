@@ -21,6 +21,12 @@ namespace Fishing.V2
         private FishingV2TuningAsset _tuning;
         private FishingV2PresentationSettings _presentation;
         private Rect _pond;
+        // 랩 경계 바깥 띠. 물고기의 절반 이상이 상시 연못 밖에 있으므로(게임플레이 화면
+        // 자체가 연못보다 넓다) 이 대역은 랩 경계에 바짝 붙어야 한다. 조금만 안쪽으로
+        // 당기면 정상적으로 보여야 할 물고기가 디더로 지워진다.
+        // 축마다 여백이 다르므로 절대 거리가 아니라 "그 축 경계까지의 비율"로 잰다.
+        // 0.90 = 경계의 90% 지점에서 지워지기 시작한다.
+        private const float WrapFadeStart = 0.90f;
         private System.Random _random;
         private FishAgentV2 _leader;
         private Vector2 _formationOffset;
@@ -213,6 +219,29 @@ namespace Fishing.V2
             _shadowSoftPropertyBlock = new MaterialPropertyBlock();
             _initialized = true;
             ApplyVisual(0f, 0f);
+        }
+
+        /// <summary>
+        /// 랩 경계 근처에서 물고기를 지운다.
+        ///
+        /// 랩 자체는 설계상 필요하다(§11-1). 문제는 x 랩 경계가 연못 가장자리에서 1.8, 즉
+        /// ±9.8인데 게임플레이 화면 폭이 정확히 ±9.8이라는 것이다 — 카메라를 조금만 빼도
+        /// 순간이동이 그대로 보인다. 경계를 밀거나 연못을 넓히면 물고기 밀도와 조우율이
+        /// 같이 바뀌므로, 이동 규칙은 그대로 두고 보이지만 않게 한다.
+        /// </summary>
+        private float EvaluateWrapEdgeFade()
+        {
+            Vector2 position = new Vector2(transform.position.x, transform.position.y);
+            float outsideX = Mathf.Abs(position.x - _pond.center.x) - _pond.width * 0.5f;
+            float outsideY = Mathf.Abs(position.y - _pond.center.y) - _pond.height * 0.5f;
+            float outside = Mathf.Max(0f, Mathf.Max(
+                outsideX / PathEvaluatorV2.WrapReentryMarginX,
+                outsideY / PathEvaluatorV2.WrapReentryMarginY));
+            // Mathf.SmoothStep(a, b, t)는 HLSL의 smoothstep(edge0, edge1, x)이 아니다 —
+            // t를 0..1 보간 계수로 보고 a와 b 사이 값을 돌려준다. 여기서 필요한 것은
+            // 경계 사이의 정규화라 InverseLerp를 먼저 거쳐야 한다.
+            float t = Mathf.InverseLerp(WrapFadeStart, 1f, outside);
+            return 1f - t * t * (3f - 2f * t);
         }
 
         public void Tick(
@@ -1259,6 +1288,8 @@ namespace Fishing.V2
             _propertyBlock.SetFloat("_DepthContrast", _presentation.FishDepthContrast);
             float heroFactor = Mathf.Clamp01((_species.BaseScore - 1f) / 29f);
             _propertyBlock.SetFloat("_HeroContrast", heroFactor * _presentation.HeroContrastStrength);
+            float edgeFade = EvaluateWrapEdgeFade();
+            _propertyBlock.SetFloat("_EdgeFade", edgeFade);
             Vector3 lightDirection = _presentation.LightDirection.sqrMagnitude > 0.001f
                 ? _presentation.LightDirection.normalized
                 : new Vector3(-0.36f, 0.58f, 0.73f).normalized;
@@ -1291,7 +1322,7 @@ namespace Fishing.V2
                 _shadowTransform.localRotation = Quaternion.identity;
                 _shadowTransform.localScale = new Vector3(shadowScale, shadowScale, 0.001f);
                 _shadowPropertyBlock.Clear();
-                _shadowPropertyBlock.SetColor("_ShadowColor", new Color(0.042f, 0.130f, 0.140f, shadowOpacity));
+                _shadowPropertyBlock.SetColor("_ShadowColor", new Color(0.042f, 0.130f, 0.140f, shadowOpacity * edgeFade));
                 _shadowPropertyBlock.SetFloat("_Softness", softness);
                 _shadowPropertyBlock.SetFloat("_Depth", _visualDepth);
                 _shadowRenderer.SetPropertyBlock(_shadowPropertyBlock);
@@ -1303,7 +1334,7 @@ namespace Fishing.V2
                     _shadowSoftTransform.localRotation = Quaternion.identity;
                     _shadowSoftTransform.localScale = new Vector3(softScale, softScale, 0.001f);
                     _shadowSoftPropertyBlock.Clear();
-                    _shadowSoftPropertyBlock.SetColor("_ShadowColor", new Color(0.042f, 0.130f, 0.140f, shadowOpacity * (0.32f + softness * 0.28f)));
+                    _shadowSoftPropertyBlock.SetColor("_ShadowColor", new Color(0.042f, 0.130f, 0.140f, shadowOpacity * (0.32f + softness * 0.28f) * edgeFade));
                     _shadowSoftPropertyBlock.SetFloat("_Softness", Mathf.Min(1f, softness + 0.22f));
                     _shadowSoftPropertyBlock.SetFloat("_Depth", _visualDepth);
                     _shadowSoftRenderer.SetPropertyBlock(_shadowSoftPropertyBlock);

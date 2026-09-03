@@ -110,8 +110,10 @@ namespace Fishing.V2
             // Gameplay 0.0035의 약 2배. 수면 너머라 아래가 흔들리긴 하되, 굴절 자체가
             // 눈에 띄는 연출이 되지는 않는 정도.
             profile.RefractionCoefficient = 0.0075f;
-            profile.RefractionScale = 0.95f;
-            profile.RefractionSpeed = 0.30f;
+            // scale은 세 프로파일 모두 gameplay 값과 같다. 이 값은 필드의 공간 주파수라서
+            // 전환 중에 보간하면 수면 무늬 전체가 줌되며 뭉개진다 — 흐르는 게 아니라
+            // 화면이 늘어났다 줄어드는 것으로 보인다.
+            profile.RefractionSpeed = 0.22f;
             profile.SurfaceRippleStrength = 1.05f;
             // 능선은 거의 죽인다. 여기를 올리면 물이 아니라 천 주름이 된다.
             profile.SurfaceShapeStrength = 0.55f;
@@ -128,36 +130,45 @@ namespace Fishing.V2
             profile.UnderwaterClarity = 0.60f;
             profile.FishLightInfluence = 1.40f;
             profile.PhysicalRippleStrength = 1.25f;
-            profile.CameraHeight = 1.20f;
+            // 물 밖에서는 연못이 멀다. 대상의 크기 변화가 "다가간다"를 만드는 가장 강한
+            // 단서인데, 1.20(=물고기 20% 작음)은 그 신호로 쓰기엔 약했다. 물고기를 직접
+            // 스케일하지 않는 이유는 그림자와 크기 대비가 같이 깨지기 때문이다.
+            profile.CameraHeight = 1.42f;
             profile.CameraFramingShift = new Vector2(0f, 0.45f);
             return profile;
         }
 
         /// <summary>
-        /// 수면을 지나는 중간 상태. 예전처럼 한 번 크게 튀는 peak가 아니라, 2초 넘게 이어지는
-        /// 하강의 중간 지점이다. 반사가 빠지고 맑기가 돌아오는 구간이라 값도 그 사이에 있다.
-        /// 굴절만 잠깐 위로 부풀어서 "경계면을 지난다"를 표시한다.
+        /// 수면 바로 위. 카메라가 수면에 거의 닿은 상태다.
+        ///
+        /// 통과 순간의 peak가 아니라 통과 "직전"이라는 점이 중요하다. 물 밖에서 가까이
+        /// 다가간다고 물이 맑아지거나 반사가 사라지지는 않는다 — 오히려 수면이 가까우니
+        /// 굴절과 물결이 더 크게 보이고, 반사는 그대로 남아 있다. 맑아지는 것은 통과한
+        /// 뒤의 일이고, 그 정리는 CrossingFraction 이후 구간이 맡는다.
         /// </summary>
         public static FishingV2WaterProfile DiveTransition(FishingV2PresentationSettings settings)
         {
             FishingV2WaterProfile profile = PresentationAboveWater(settings);
             profile.DisplayName = "Dive";
             profile.RefractionCoefficient = 0.0125f;
-            profile.RefractionScale = 0.88f;
-            profile.RefractionSpeed = 0.42f;
+            // 속도 차이는 좁게. 위상은 이제 누적이라 안전하지만, 물이 눈에 띄게 빨라졌다
+            // 느려지면 그것 자체가 배속 재생으로 읽힌다.
+            profile.RefractionSpeed = 0.26f;
             profile.SurfaceRippleStrength = 1.25f;
             profile.SurfaceShapeStrength = 0.78f;
             profile.SurfaceHighlightStrength = 1.55f;
             profile.SurfaceSpecularStrength = 0.72f;
             // 수면을 통과하는 중이므로 반사는 빠진다. 이것이 "경계면을 넘었다"의 주된 단서다.
-            profile.SurfaceReflectionStrength = 0.26f;
-            profile.LargeCausticStrength = settings.WaterLargeCausticStrength * 0.92f;
-            profile.MidCausticStrength = settings.WaterMidCausticStrength * 0.88f;
-            profile.MicroSurfaceStrength = settings.WaterMicroSurfaceStrength * 1.40f;
-            profile.WaterAbsorptionStrength = 1.22f;
-            profile.UnderwaterClarity = 0.80f;
-            profile.FishLightInfluence = 1.75f;
+            profile.SurfaceReflectionStrength = 0.72f;
+            profile.LargeCausticStrength = settings.WaterLargeCausticStrength * 0.78f;
+            profile.MidCausticStrength = settings.WaterMidCausticStrength * 0.72f;
+            profile.MicroSurfaceStrength = settings.WaterMicroSurfaceStrength * 1.65f;
+            profile.WaterAbsorptionStrength = 1.42f;
+            profile.UnderwaterClarity = 0.64f;
+            profile.FishLightInfluence = 1.52f;
             profile.PhysicalRippleStrength = 1.12f;
+            // 줌의 대부분(1.42 -> 1.07)이 잠수 구간에서 일어나고, 남은 조금만 settle에서
+            // 마무리된다. 내려가는 동안 계속 가까워져야 하강으로 읽힌다.
             profile.CameraHeight = 1.07f;
             profile.CameraFramingShift = new Vector2(0f, 0.16f);
             return profile;
@@ -169,7 +180,27 @@ namespace Fishing.V2
         /// </summary>
         public static FishingV2WaterProfile Blend(FishingV2WaterProfile from, FishingV2WaterProfile to, float t)
         {
-            t = Mathf.Clamp01(t);
+            return BlendStaggered(from, to, t, t, t);
+        }
+
+        /// <summary>
+        /// 항목별로 다른 시점에 움직이는 블렌드.
+        ///
+        /// 전부 같은 곡선으로 움직이면 "슬라이더 하나를 당겼다"로 보이지 실제로 내려가는
+        /// 느낌이 안 난다. 순서가 있어야 한다 — 수면이 먼저 지나가고(surface), 그다음 물이
+        /// 맑아지고(volume), 바닥 빛은 마지막에 올라온다(floor). 그래야 통과 → 하강 → 도착
+        /// 이라는 세 박자로 읽힌다.
+        /// </summary>
+        public static FishingV2WaterProfile BlendStaggered(
+            FishingV2WaterProfile from,
+            FishingV2WaterProfile to,
+            float surfaceT,
+            float volumeT,
+            float floorT)
+        {
+            float t = Mathf.Clamp01(surfaceT);
+            float v = Mathf.Clamp01(volumeT);
+            float f = Mathf.Clamp01(floorT);
             return new FishingV2WaterProfile
             {
                 DisplayName = t < 0.5f ? from.DisplayName : to.DisplayName,
@@ -184,12 +215,12 @@ namespace Fishing.V2
                 SurfaceReflectionStrength = Mathf.Lerp(from.SurfaceReflectionStrength, to.SurfaceReflectionStrength, t),
                 SurfaceReflectionColor = Color.Lerp(from.SurfaceReflectionColor, to.SurfaceReflectionColor, t),
                 SurfaceSpecularColor = Color.Lerp(from.SurfaceSpecularColor, to.SurfaceSpecularColor, t),
-                LargeCausticStrength = Mathf.Lerp(from.LargeCausticStrength, to.LargeCausticStrength, t),
-                MidCausticStrength = Mathf.Lerp(from.MidCausticStrength, to.MidCausticStrength, t),
-                MicroSurfaceStrength = Mathf.Lerp(from.MicroSurfaceStrength, to.MicroSurfaceStrength, t),
-                WaterAbsorptionStrength = Mathf.Lerp(from.WaterAbsorptionStrength, to.WaterAbsorptionStrength, t),
-                UnderwaterClarity = Mathf.Lerp(from.UnderwaterClarity, to.UnderwaterClarity, t),
-                FishLightInfluence = Mathf.Lerp(from.FishLightInfluence, to.FishLightInfluence, t),
+                LargeCausticStrength = Mathf.Lerp(from.LargeCausticStrength, to.LargeCausticStrength, f),
+                MidCausticStrength = Mathf.Lerp(from.MidCausticStrength, to.MidCausticStrength, f),
+                MicroSurfaceStrength = Mathf.Lerp(from.MicroSurfaceStrength, to.MicroSurfaceStrength, f),
+                WaterAbsorptionStrength = Mathf.Lerp(from.WaterAbsorptionStrength, to.WaterAbsorptionStrength, v),
+                UnderwaterClarity = Mathf.Lerp(from.UnderwaterClarity, to.UnderwaterClarity, v),
+                FishLightInfluence = Mathf.Lerp(from.FishLightInfluence, to.FishLightInfluence, f),
                 PhysicalRippleStrength = Mathf.Lerp(from.PhysicalRippleStrength, to.PhysicalRippleStrength, t),
                 CameraHeight = Mathf.Lerp(from.CameraHeight, to.CameraHeight, t),
                 CameraFramingShift = Vector2.Lerp(from.CameraFramingShift, to.CameraFramingShift, t)

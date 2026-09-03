@@ -10,16 +10,21 @@ namespace Fishing.V2
     [Serializable]
     public sealed class FishingV2DivePresentationTiming
     {
-        [Tooltip("물 밖에서 수면을 내려다보는 구간.")]
-        [Range(0f, 2f)] public float AboveWaterSeconds = 0.70f;
-        [Tooltip("수면을 지나 내려가는 구간. 천천히 잠기는 것이 요점이라 2초 이상 잡는다.")]
-        [Range(0.2f, 4f)] public float DiveSeconds = 2.40f;
-        [Tooltip("카메라 framing이 gameplay 위치로 마저 내려앉는 구간. 광학은 이미 Gameplay다.")]
-        [Range(0f, 1.5f)] public float SettleSeconds = 0.40f;
-        [Tooltip("Dive 구간 안에서 수면을 지나는 지점. 그 뒤가 길어야 '가라앉는다'로 읽힌다.")]
-        [Range(0.1f, 0.8f)] public float PeakFraction = 0.40f;
+        [Tooltip("찌가 날아가는 구간. 이 동안 카메라는 이미 내려오기 시작한다.")]
+        [Range(0f, 2f)] public float AboveWaterSeconds = 0.55f;
+        [Tooltip("착수부터 수면을 뚫기까지. 카메라가 천천히 다가가는 구간이다.")]
+        [Range(0.2f, 4f)] public float DiveSeconds = 2.25f;
+        [Tooltip("수면을 뚫은 뒤 줌만 계속해서 안착하는 구간.")]
+        [Range(0f, 1.5f)] public float SettleSeconds = 0.60f;
+        [Tooltip("Dive 구간 안에서 수면을 실제로 뚫는 지점. 여기까지는 물 밖이라 광학이 거의 안 변한다.")]
+        [Range(0.1f, 0.95f)] public float CrossingFraction = 0.84f;
 
         public float DiveEnd { get { return AboveWaterSeconds + DiveSeconds; } }
+        /// <summary>카메라가 수면을 뚫는 시각.</summary>
+        public float CrossingTime
+        {
+            get { return AboveWaterSeconds + DiveSeconds * Mathf.Clamp(CrossingFraction, 0.05f, 0.95f); }
+        }
         public float TotalSeconds { get { return AboveWaterSeconds + DiveSeconds + SettleSeconds; } }
     }
 
@@ -39,20 +44,57 @@ namespace Fishing.V2
 
         private float _time;
         private bool _playing;
+        // 물 밖에서 찌 던질 자리를 고르는 동안의 무기한 정지. 시계가 아니라 상태다.
+        private bool _awaitingOpeningCast;
+        // 지금 화면에 걸린 프로파일의 바탕. 펄스가 이 위에 얹히므로 따로 들고 있어야
+        // 매 프레임 다시 얹어도 값이 누적되지 않는다.
+        private FishingV2WaterProfile _baseProfile;
+        private float _pulseAge = 99f;
+        private float _pulseStrength;
+        private const float PulseDuration = 1.35f;
         // 디버그 홀드는 입력을 잠그지 않는다. A/B 비교 중에 찌를 던져서 physical ripple까지
         // 같이 보려면 잠그면 안 된다.
         private bool _debugHold;
 
         public FishingV2SessionPresentationPhase Phase { get; private set; } = FishingV2SessionPresentationPhase.Gameplay;
+        /// <summary>이번 Tick에서 수면을 뚫었는가. 기포와 물방울 소거가 여기 걸린다.</summary>
+        public bool CrossedSurfaceThisTick { get; private set; }
         public FishingV2WaterProfile Current { get; private set; }
         public float Time { get { return _time; } }
         public float TotalSeconds { get { return _timing.TotalSeconds; } }
         public bool IsPlaying { get { return _playing; } }
+        public bool IsAwaitingOpeningCast { get { return _awaitingOpeningCast; } }
 
-        /// <summary>연출이 아직 입력을 쥐고 있는가. gameplay 로직 자체는 건드리지 않는다.</summary>
+        /// <summary>
+        /// 게임 크롬의 알파. 물이 주인공인 구간에 점수판이 떠 있으면 그 구간이 연출이 아니라
+        /// 로딩 화면으로 읽힌다. 카메라가 자리를 잡는 settle 구간에 맞춰 올라온다.
+        /// </summary>
+        public float HudAlpha { get; private set; } = 1f;
+
+        /// <summary>
+        /// 연출이 완전히 끝나 플레이어가 개입할 수 있는 상태인가.
+        ///
+        /// 세션 시계·입력·물고기의 찌 반응이 전부 이 하나에 걸린다. 카메라가 아직 내려앉는
+        /// 중인데 물고기가 찌에 몰리면, 플레이어가 손을 못 대는 사이에 입질이 끝난다 —
+        /// 실제로 검증 중에 잠수 도중 한 마리가 잡혔다.
+        /// </summary>
+        public bool IsSessionLive
+        {
+            get
+            {
+                return !_awaitingOpeningCast
+                    && !_playing
+                    && Phase == FishingV2SessionPresentationPhase.Gameplay;
+            }
+        }
+
+        /// <summary>
+        /// 연출이 입력을 쥐고 있는가. 물 밖 대기 중에는 잠그지 않는다 — 그 상태를 끝내는
+        /// 행동이 바로 캐스팅이라, 여기서 입력을 막으면 세션이 시작되지 않는다.
+        /// </summary>
         public bool InputLocked
         {
-            get { return _playing && !_debugHold && Phase != FishingV2SessionPresentationPhase.Gameplay; }
+            get { return !_debugHold && !_awaitingOpeningCast && !IsSessionLive; }
         }
 
         public void Configure(
@@ -75,10 +117,125 @@ namespace Fishing.V2
             }
         }
 
+        /// <summary>
+        /// 진행 중인 연출을 건드리지 않고 프로파일과 시간표만 갈아끼운다.
+        ///
+        /// Configure()는 상태를 초기화하므로 매 프레임 부를 수 없다. 애셋을 재생 중에
+        /// 편집해도 바로 보이려면 상태를 보존한 채 값만 바꾸는 통로가 따로 있어야 한다.
+        /// </summary>
+        public void UpdateProfiles(
+            FishingV2WaterProfile gameplay,
+            FishingV2WaterProfile presentation,
+            FishingV2WaterProfile dive,
+            FishingV2DivePresentationTiming timing)
+        {
+            _gameplay = gameplay;
+            _presentation = presentation;
+            _dive = dive;
+            if (timing != null) _timing = timing;
+
+            if (_awaitingOpeningCast)
+            {
+                SetBaseProfile(_presentation);
+            }
+            else if (_playing)
+            {
+                Evaluate();
+            }
+            else if (Phase == FishingV2SessionPresentationPhase.Gameplay)
+            {
+                SetBaseProfile(_gameplay);
+            }
+            else if (Phase == FishingV2SessionPresentationPhase.AboveWater)
+            {
+                SetBaseProfile(_presentation);
+            }
+            else
+            {
+                SetBaseProfile(_dive);
+            }
+        }
+
+        /// <summary>
+        /// 세션을 물 밖 상태로 연다. 시계는 멈춰 있고, 플레이어가 찌를 던질 때까지 기다린다.
+        /// 이 구간에서도 물고기 시뮬레이션은 그대로 돌아가므로 연못을 보면서 자리를 고를 수 있다.
+        /// </summary>
+        public void BeginOpening()
+        {
+            _debugHold = false;
+            _playing = false;
+            _awaitingOpeningCast = true;
+            _time = 0f;
+            _pulseAge = 99f;
+            Phase = FishingV2SessionPresentationPhase.AboveWater;
+            SetBaseProfile(_presentation);
+            HudAlpha = 0f;
+        }
+
+        /// <summary>
+        /// 착수처럼 순간적인 사건이 수면을 흔든다. 프로파일 위에 얹히는 일시적 가산이라
+        /// 상태 전환과 독립이고, 나중에 BiteFocus/BigCatch도 같은 통로를 쓸 수 있다.
+        /// </summary>
+        public void PushSurfacePulse(float strength)
+        {
+            _pulseAge = 0f;
+            _pulseStrength = Mathf.Clamp01(strength);
+            Current = ApplyPulse(_baseProfile);
+        }
+
+        private void SetBaseProfile(FishingV2WaterProfile profile)
+        {
+            _baseProfile = profile;
+            Current = ApplyPulse(profile);
+        }
+
+        /// <summary>
+        /// 빠르게 솟았다 길게 잦아드는 포락선. 대칭이면 물이 튄 게 아니라 값이 한 번
+        /// 오르내린 것으로 보인다.
+        /// </summary>
+        private FishingV2WaterProfile ApplyPulse(FishingV2WaterProfile profile)
+        {
+            if (_pulseAge >= PulseDuration || _pulseStrength <= 0.0001f)
+            {
+                return profile;
+            }
+
+            float t = _pulseAge / PulseDuration;
+            float attack = Mathf.Clamp01(t / 0.10f);
+            float decay = (1f - t) * (1f - t);
+            float envelope = attack * decay * _pulseStrength;
+
+            // 수면이 거칠어지는 것 자체는 여기서 하지 않는다. 전역으로 올리면 화면 구석의
+            // 잔잔하던 물까지 같이 파도쳐서 "안 보이던 파도가 갑자기 나타난" 것으로 보인다.
+            // 착수 교란은 셰이더의 SplashChop이 착수 지점 주변에만 얹는다.
+            //
+            // 여기 남는 것은 실제로 찌에 붙어 있는 것들뿐이다. 물리적 파문은 찌가 만드는
+            // 것이고, 굴절 속도는 그 자리의 물이 잠깐 빨라지는 것이라 국소 교란과 결이 같다.
+            profile.PhysicalRippleStrength += 0.55f * envelope;
+            profile.RefractionSpeed += 0.10f * envelope;
+            return profile;
+        }
+
+        /// <summary>첫 찌가 수면에 닿았다. 여기서부터 잠수 시간축이 흐른다.</summary>
+        public void ReleaseDive()
+        {
+            if (!_awaitingOpeningCast)
+            {
+                return;
+            }
+
+            _awaitingOpeningCast = false;
+            _debugHold = false;
+            _playing = true;
+            _time = 0f;
+            Evaluate();
+        }
+
         /// <summary>세션 시작 연출을 처음부터 재생한다.</summary>
         public void PlayIntro()
         {
             _debugHold = false;
+            _awaitingOpeningCast = false;
             _playing = true;
             _time = 0f;
             Evaluate();
@@ -88,27 +245,33 @@ namespace Fishing.V2
         {
             _playing = false;
             _debugHold = false;
+            _awaitingOpeningCast = false;
             _time = _timing.TotalSeconds;
             Phase = FishingV2SessionPresentationPhase.Gameplay;
-            Current = _gameplay;
+            SetBaseProfile(_gameplay);
+            HudAlpha = 1f;
         }
 
         public void ForcePresentation()
         {
             _playing = false;
             _debugHold = true;
+            _awaitingOpeningCast = false;
             _time = 0f;
             Phase = FishingV2SessionPresentationPhase.AboveWater;
-            Current = _presentation;
+            SetBaseProfile(_presentation);
+            HudAlpha = 0f;
         }
 
         public void ForceDivePeak()
         {
             _playing = false;
             _debugHold = true;
-            _time = _timing.AboveWaterSeconds + _timing.DiveSeconds * _timing.PeakFraction;
+            _awaitingOpeningCast = false;
+            _time = _timing.CrossingTime;
             Phase = FishingV2SessionPresentationPhase.Diving;
-            Current = _dive;
+            SetBaseProfile(_dive);
+            HudAlpha = 0f;
         }
 
         /// <summary>
@@ -119,24 +282,38 @@ namespace Fishing.V2
         {
             _playing = false;
             _debugHold = true;
+            _awaitingOpeningCast = false;
             _time = Mathf.Clamp(time, 0f, _timing.TotalSeconds);
             Evaluate();
         }
 
         public void Tick(float dt)
         {
+            _pulseAge += Mathf.Max(0f, dt);
+            CrossedSurfaceThisTick = false;
+            float previousTime = _time;
+
             if (!_playing)
             {
+                // 재생이 끝난 뒤에도 펄스는 살아 있어야 한다 — 착수는 게임플레이 중에도 있다.
+                Current = ApplyPulse(_baseProfile);
                 return;
             }
 
             _time += Mathf.Max(0f, dt);
+            float crossing = _timing.CrossingTime;
+            if (previousTime < crossing && _time >= crossing)
+            {
+                CrossedSurfaceThisTick = true;
+            }
+
             if (_time >= _timing.TotalSeconds)
             {
                 _time = _timing.TotalSeconds;
                 _playing = false;
                 Phase = FishingV2SessionPresentationPhase.Gameplay;
-                Current = _gameplay;
+                SetBaseProfile(_gameplay);
+                HudAlpha = 1f;
                 return;
             }
 
@@ -147,67 +324,69 @@ namespace Fishing.V2
         {
             float aboveWaterEnd = _timing.AboveWaterSeconds;
             float diveEnd = _timing.DiveEnd;
+            float crossing = _timing.CrossingTime;
 
+            // 광학은 수면을 뚫기 전까지 거의 변하지 않는다. 물 밖에서 가까이 다가간다고
+            // 물이 맑아지지는 않는다 — 맑아지는 것은 통과한 뒤의 일이다.
             FishingV2WaterProfile optics;
-            if (_time < aboveWaterEnd)
+            if (_time < crossing)
             {
-                Phase = FishingV2SessionPresentationPhase.AboveWater;
-                optics = _presentation;
-            }
-            else if (_time < diveEnd)
-            {
-                Phase = FishingV2SessionPresentationPhase.Diving;
-                float dive01 = Mathf.InverseLerp(aboveWaterEnd, diveEnd, _time);
-                float peak = Mathf.Clamp(_timing.PeakFraction, 0.05f, 0.95f);
-                if (dive01 < peak)
-                {
-                    // 수면에 닿는 구간. 부드럽게 들어간다 — 여기서 가속을 주면 천천히 잠기는
-                    // 인상이 깨지고 값이 한 번 튄 것처럼 보인다.
-                    float t = Mathf.InverseLerp(0f, peak, dive01);
-                    optics = FishingV2WaterProfile.Blend(_presentation, _dive, Mathf.SmoothStep(0f, 1f, t));
-                }
-                else
-                {
-                    // 수면 아래로 내려가는 구간. 전체의 60%를 여기 쓴다 — 반사가 빠지고
-                    // 맑기와 바닥 코스틱이 돌아오는 과정 자체가 "들어간다"의 내용이다.
-                    float t = Mathf.InverseLerp(peak, 1f, dive01);
-                    optics = FishingV2WaterProfile.Blend(_dive, _gameplay, Mathf.SmoothStep(0f, 1f, t));
-                }
+                Phase = _time < aboveWaterEnd
+                    ? FishingV2SessionPresentationPhase.AboveWater
+                    : FishingV2SessionPresentationPhase.Diving;
+                float t = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, crossing, _time));
+                optics = FishingV2WaterProfile.Blend(_presentation, _dive, t);
             }
             else
             {
-                Phase = FishingV2SessionPresentationPhase.Gameplay;
-                optics = _gameplay;
+                Phase = _time < diveEnd
+                    ? FishingV2SessionPresentationPhase.Diving
+                    : FishingV2SessionPresentationPhase.Gameplay;
+                // 통과 뒤에는 항목마다 다른 시점에 정리된다. 전부 같은 곡선이면 값 하나를
+                // 당긴 것으로 보인다 — 수면이 먼저 사라지고, 물이 맑아지고, 바닥 빛이 온다.
+                float t = Mathf.InverseLerp(crossing, _timing.TotalSeconds, _time);
+                float surfaceT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.00f, 0.42f, t));
+                float volumeT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.14f, 0.78f, t));
+                float floorT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.34f, 1.00f, t));
+                optics = FishingV2WaterProfile.BlendStaggered(_dive, _gameplay, surfaceT, volumeT, floorT);
             }
 
-            // 카메라는 광학과 다른 곡선을 탄다. 광학은 수면을 통과하는 순간 한 번 크게 흔들렸다가
-            // 바로 가라앉지만, 카메라는 전체 구간에 걸쳐 한 번만 내려앉아야 한다. 두 곡선을 하나로
-            // 묶으면 dive가 끝나는 지점에서 orthographicSize가 눈에 띄게 한 번 튄다.
-            float cameraHeight;
-            Vector2 cameraShift;
+            // 카메라는 클릭한 순간부터 끊김 없이 하나의 곡선을 탄다. 찌가 나는 동안 이미
+            // 내려오기 시작해야 착수 시점에 렌즈가 수면에 가깝고, 죽은 구간도 안 생긴다.
+            float cameraT;
             if (_time < aboveWaterEnd)
             {
-                cameraHeight = _presentation.CameraHeight;
-                cameraShift = _presentation.CameraFramingShift;
+                cameraT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, aboveWaterEnd, _time)) * 0.34f;
             }
             else if (_time < diveEnd)
             {
-                float t = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(aboveWaterEnd, diveEnd, _time));
-                cameraHeight = Mathf.Lerp(_presentation.CameraHeight, _dive.CameraHeight, t);
-                cameraShift = Vector2.Lerp(_presentation.CameraFramingShift, _dive.CameraFramingShift, t);
+                cameraT = 0.34f + 0.66f * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(aboveWaterEnd, diveEnd, _time));
             }
             else
             {
-                float t = _timing.SettleSeconds > 0.0001f
+                cameraT = 1f;
+            }
+
+            float cameraHeight = Mathf.Lerp(_presentation.CameraHeight, _dive.CameraHeight, cameraT);
+            Vector2 cameraShift = Vector2.Lerp(_presentation.CameraFramingShift, _dive.CameraFramingShift, cameraT);
+            if (_time >= diveEnd)
+            {
+                float settle = _timing.SettleSeconds > 0.0001f
                     ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(diveEnd, _timing.TotalSeconds, _time))
                     : 1f;
-                cameraHeight = Mathf.Lerp(_dive.CameraHeight, _gameplay.CameraHeight, t);
-                cameraShift = Vector2.Lerp(_dive.CameraFramingShift, _gameplay.CameraFramingShift, t);
+                cameraHeight = Mathf.Lerp(_dive.CameraHeight, _gameplay.CameraHeight, settle);
+                cameraShift = Vector2.Lerp(_dive.CameraFramingShift, _gameplay.CameraFramingShift, settle);
             }
 
             optics.CameraHeight = cameraHeight;
             optics.CameraFramingShift = cameraShift;
-            Current = optics;
+            _baseProfile = optics;
+            Current = ApplyPulse(optics);
+
+            // 크롬은 마지막에 올라온다. 통과한 뒤부터 시작해서 안착과 함께 도착한다.
+            HudAlpha = _time < diveEnd
+                ? 0f
+                : Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(diveEnd, _timing.TotalSeconds, _time));
         }
     }
 }

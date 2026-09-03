@@ -191,6 +191,14 @@ MonoBehaviour:
     HeroContrastStrength: 0.08
     ShadowDepthInfluence: 0.92
     ShadowSoftness: 0.34
+  PlaySessionDivePresentation: 1
+  WaterPresentationAsset: {fileID: 11400000, guid: 3a5ecb409dbde994ebf7a9ddcb4e553c, type: 2}
+  DivePresentationTiming:
+    AboveWaterSeconds: 0.55
+    DiveSeconds: 1.85
+    SettleSeconds: 0.6
+    CrossingFraction: 0.84
+  EnableDebugHotkeys: 1
   BottomSubstrateTexture: {fileID: 2800000, guid: 49b49a1553451d94085a50b4a9bd70b3, type: 3}
 --- !u!4 &224227276
 Transform:

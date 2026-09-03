@@ -98,6 +98,23 @@ namespace Fishing.V2
             _physicalRippleStrength = Mathf.Max(0f, strength);
         }
 
+        /// <summary>
+        /// 새 세션을 위해 찌를 처음 상태로 되돌린다. 이걸 안 하면 세션을 다시 시작했을 때
+        /// 이전 찌가 물에 뜬 채로 "던질 자리를 고르는" 화면이 시작된다.
+        /// </summary>
+        public void ResetForNewSession()
+        {
+            ClearBite();
+            Phase = BobberPhase.Idle;
+            Position = _pond.center;
+            _pendingPosition = Position;
+            _castStartPosition = Position;
+            _phaseTimer = 0f;
+            _spamCount = 0;
+            _lastCastTime = -100f;
+            UpdateVisual();
+        }
+
         public void RequestCast(Vector2 position)
         {
             _pendingPosition = ClampToPond(position, 0.5f);
@@ -235,6 +252,9 @@ namespace Fishing.V2
 
             if (_visual != null)
             {
+                // 첫 캐스팅 전에는 찌가 화면에 없어야 한다. Idle은 그 구간에만 나온다.
+                bool visible = Phase != BobberPhase.Idle;
+                if (_visual.gameObject.activeSelf != visible) _visual.gameObject.SetActive(visible);
                 float dip = HitFish != null ? 1f : 0f;
                 // The water is an opaque background at -Z; keep the bobber on the +Z-facing side.
                 Vector3 world = new Vector3(visualPosition.x, visualPosition.y, 0.46f - dip * 0.05f);

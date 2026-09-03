@@ -1,0 +1,107 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e8d639cda9bda2b4b928c44f0a48bb93, type: 3}
+  m_Name: FishingV2WaterPresentation
+  m_EditorClassIdentifier: FishingV2::Fishing.V2.FishingV2WaterPresentationAsset
+  Timing:
+    AboveWaterSeconds: 0.55
+    DiveSeconds: 2.25
+    SettleSeconds: 0.6
+    CrossingFraction: 0.84
+  Splash:
+    PrimaryDuration: 1.9
+    GameplayDuration: 1.55
+    SecondaryCount: 5
+    SecondaryDuration: 1.05
+    SecondaryDelayMin: 0.42
+    SecondaryDelayMax: 0.85
+    SecondaryDistanceMin: 0.105
+    SecondaryDistanceMax: 0.26
+    SecondaryStrengthMin: 0.42
+    SecondaryStrengthMax: 0.64
+    SecondaryRingScaleMin: 0.38
+    SecondaryRingScaleMax: 0.52
+    LensDropletDuration: 2.1
+    CastBubbleDuration: 1.85
+    GameplayBubbleDuration: 2.2
+    GameplayBubbleRushSpeed: 1.45
+    CrossBubbleDuration: 0.85
+    CrossBubbleRushSpeed: 2.85
+    CameraImpulseDuration: 0.42
+    GameplayImpulseScale: 0.33
+    GameplayBubbleStrength: 0.62
+  Gameplay:
+    DisplayName: Gameplay
+    RefractionStrength: 0.68
+    RefractionCoefficient: 0.0035
+    RefractionScale: 1.08
+    RefractionSpeed: 0.18
+    SurfaceRippleStrength: 0.85
+    SurfaceShapeStrength: 0
+    SurfaceHighlightStrength: 1
+    SurfaceSpecularStrength: 0
+    SurfaceReflectionStrength: 0
+    SurfaceReflectionColor: {r: 0.38, g: 0.64, b: 0.76, a: 1}
+    SurfaceSpecularColor: {r: 0.72, g: 0.88, b: 0.94, a: 1}
+    LargeCausticStrength: 0.68
+    MidCausticStrength: 0.36
+    MicroSurfaceStrength: 0.14
+    WaterAbsorptionStrength: 1
+    UnderwaterClarity: 1
+    FishLightInfluence: 1
+    PhysicalRippleStrength: 1
+    CameraHeight: 1
+    CameraFramingShift: {x: 0, y: 0}
+  AboveWater:
+    DisplayName: Presentation / AboveWater
+    RefractionStrength: 1
+    RefractionCoefficient: 0.0075
+    RefractionScale: 1.08
+    RefractionSpeed: 0.22
+    SurfaceRippleStrength: 1.05
+    SurfaceShapeStrength: 0.55
+    SurfaceHighlightStrength: 1.95
+    SurfaceSpecularStrength: 0.55
+    SurfaceReflectionStrength: 0.95
+    SurfaceReflectionColor: {r: 0.38, g: 0.64, b: 0.76, a: 1}
+    SurfaceSpecularColor: {r: 0.72, g: 0.88, b: 0.94, a: 1}
+    LargeCausticStrength: 0.476
+    MidCausticStrength: 0.22320001
+    MicroSurfaceStrength: 0.259
+    WaterAbsorptionStrength: 1.5
+    UnderwaterClarity: 0.6
+    FishLightInfluence: 1.4
+    PhysicalRippleStrength: 1.25
+    CameraHeight: 1.42
+    CameraFramingShift: {x: 0, y: 0.45}
+  NearSurface:
+    DisplayName: Dive
+    RefractionStrength: 1
+    RefractionCoefficient: 0.0125
+    RefractionScale: 1.08
+    RefractionSpeed: 0.26
+    SurfaceRippleStrength: 1.25
+    SurfaceShapeStrength: 0.78
+    SurfaceHighlightStrength: 1.55
+    SurfaceSpecularStrength: 0.72
+    SurfaceReflectionStrength: 0.72
+    SurfaceReflectionColor: {r: 0.38, g: 0.64, b: 0.76, a: 1}
+    SurfaceSpecularColor: {r: 0.72, g: 0.88, b: 0.94, a: 1}
+    LargeCausticStrength: 0.5304
+    MidCausticStrength: 0.2592
+    MicroSurfaceStrength: 0.23099999
+    WaterAbsorptionStrength: 1.42
+    UnderwaterClarity: 0.64
+    FishLightInfluence: 1.52
+    PhysicalRippleStrength: 1.12
+    CameraHeight: 1.07
+    CameraFramingShift: {x: 0, y: 0.16}
