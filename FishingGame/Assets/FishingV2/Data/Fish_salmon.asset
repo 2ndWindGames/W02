@@ -19,6 +19,8 @@ MonoBehaviour:
     PathType: 0
     BaseScore: 3
     Zone: {x: 0.05, y: 0.95}
+    HudIcon: {fileID: 2800000, guid: 76542bab90ea0e844a60d5d13b6ff561, type: 3}
+    HudIconScale: 0.78
     VisualDepth:
       Min: 0.2
       Max: 0.58

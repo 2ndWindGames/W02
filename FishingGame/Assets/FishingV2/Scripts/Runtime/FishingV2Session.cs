@@ -40,13 +40,17 @@ namespace Fishing.V2
         [Header("Presentation assets")]
         [Tooltip("Replaceable organic substrate source sampled by WaterSurfaceV2. The prototype generator can recreate the local PNG.")]
         public Texture2D BottomSubstrateTexture;
+        [Tooltip("Optional in-world catch bag image. When empty, the runtime uses the primitive prototype bag.")]
+        public Texture2D CatchBagTexture;
 
         private readonly List<FishAgentV2> _fish = new List<FishAgentV2>();
         private readonly List<RespawnEntry> _respawns = new List<RespawnEntry>();
         private readonly Dictionary<string, int> _caught = new Dictionary<string, int>();
         private readonly Dictionary<string, Mesh> _meshCache = new Dictionary<string, Mesh>();
         private readonly Dictionary<string, FishSpeciesConfig> _speciesById = new Dictionary<string, FishSpeciesConfig>();
+        private readonly Dictionary<string, Texture2D> _hudIconCache = new Dictionary<string, Texture2D>();
         private readonly HashSet<string> _releaseSpecies = new HashSet<string>();
+        private static readonly string[] HudSpeciesOrder = { "anchovy", "salmon", "mahi", "squid", "tuna" };
 
         private System.Random _random;
         private Rect _pond;
@@ -66,6 +70,9 @@ namespace Fishing.V2
         private Material _bobberRingMaterial;
         private Material _bobberRippleMaterial;
         private Material _basketMaterial;
+        private Material _catchBagBodyMaterial;
+        private GameObject _catchBagRoot;
+        private Mesh _catchBagMesh;
         private LineRenderer _bobberRingLine;
         private LineRenderer _bobberRippleLine;
         private Camera _camera;
@@ -115,6 +122,13 @@ namespace Fishing.V2
         private Mesh _waterQuadMesh;
         private bool _standaloneSmoke;
         private bool _standaloneSmokeCastSent;
+        private GUIStyle _hudTitleStyle;
+        private GUIStyle _hudTimerStyle;
+        private GUIStyle _hudLabelStyle;
+        private GUIStyle _hudCountStyle;
+        private GUIStyle _hudSmallStyle;
+        private GUIStyle _hudPromptStyle;
+        private float _hudStyleScale = -1f;
 
         private sealed class RespawnEntry
         {
@@ -344,7 +358,7 @@ namespace Fishing.V2
             EnsureFishRoot();
             EnsureBobber();
             EnsureCatchFlight();
-            CreateBasketMarkers();
+            CreateCatchBag();
             ApplyWaterProfile(_waterPresentation.Current);
             _initialized = true;
         }
@@ -899,6 +913,18 @@ namespace Fishing.V2
             _basketMaterial = CreateMaterial(FindShader("Universal Render Pipeline/Unlit", "Unlit/Color", "Standard"));
             ConfigureTransparentLineMaterial(_basketMaterial);
             SetMaterialColor(_basketMaterial, _presentation.AccentColor);
+            _catchBagBodyMaterial = CreateMaterial(FindShader("Universal Render Pipeline/Unlit", "Unlit/Color", "Standard"));
+            ConfigureTransparentLineMaterial(_catchBagBodyMaterial);
+            if (CatchBagTexture != null)
+            {
+                if (_catchBagBodyMaterial.HasProperty("_BaseMap")) _catchBagBodyMaterial.SetTexture("_BaseMap", CatchBagTexture);
+                if (_catchBagBodyMaterial.HasProperty("_MainTex")) _catchBagBodyMaterial.SetTexture("_MainTex", CatchBagTexture);
+                SetMaterialColor(_catchBagBodyMaterial, Color.white);
+            }
+            else
+            {
+                SetMaterialColor(_catchBagBodyMaterial, new Color(0.58f, 0.38f, 0.15f, 1f));
+            }
             ConfigureWaterMaterial(_waterMaterial, _presentation);
             ConfigureWaterMaterial(_underwaterBottomMaterial, _presentation);
             ConfigureFishMaterial(_fishMaterial, _presentation);
@@ -1466,6 +1492,15 @@ namespace Fishing.V2
                 SetMaterialColor(_basketMaterial, basket);
             }
 
+            if (_catchBagBodyMaterial != null)
+            {
+                float bagAlpha = Mathf.Clamp01(_waterPresentation.HudAlpha);
+                SetMaterialColor(_catchBagBodyMaterial, CatchBagTexture != null
+                    ? new Color(1f, 1f, 1f, bagAlpha)
+                    : new Color(0.58f, 0.38f, 0.15f, bagAlpha));
+                if (_catchBagRoot != null) _catchBagRoot.SetActive(bagAlpha > 0.01f);
+            }
+
             ApplyCameraPresentation(profile);
         }
 
@@ -1742,18 +1777,101 @@ namespace Fishing.V2
             _catchFlight.Initialize(Tuning, _fishMaterial);
         }
 
-        private void CreateBasketMarkers()
+        private void CreateCatchBag()
         {
-            for (int i = 0; i < 5; i++)
+            _catchBagRoot = new GameObject("FishingCatchBag");
+            _catchBagRoot.transform.SetParent(transform, false);
+            Vector3 safeBagPosition = _camera != null
+                ? _camera.ViewportToWorldPoint(new Vector3(0.10f, 0.16f, Mathf.Abs(_camera.transform.position.z)))
+                : new Vector3(_pond.xMax - 0.95f, _pond.yMin + 0.72f, 0.12f);
+            _catchBagRoot.transform.position = new Vector3(safeBagPosition.x, safeBagPosition.y, 0.12f);
+
+            if (CatchBagTexture != null)
             {
-                GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                marker.name = "BasketSlot_" + i;
-                marker.transform.position = new Vector3(_pond.xMax - 0.35f, _pond.yMin + 0.55f + i * 0.72f, 0.10f);
-                marker.transform.localScale = new Vector3(0.20f, 0.42f, 0.04f);
-                marker.GetComponent<MeshRenderer>().sharedMaterial = _basketMaterial;
-                Collider collider = marker.GetComponent<Collider>();
-                if (collider != null) DestroyObjectSafe(collider);
+                CreateTexturedCatchBag();
+                return;
             }
+
+            _catchBagMesh = new Mesh { name = "FishingCatchBag_Body" };
+            _catchBagMesh.vertices = new[]
+            {
+                new Vector3(-0.53f, -0.52f, 0f),
+                new Vector3(0.53f, -0.52f, 0f),
+                new Vector3(0.43f, 0.38f, 0f),
+                new Vector3(-0.43f, 0.38f, 0f)
+            };
+            _catchBagMesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+            _catchBagMesh.RecalculateNormals();
+            _catchBagMesh.RecalculateBounds();
+
+            GameObject body = new GameObject("BagBody");
+            body.transform.SetParent(_catchBagRoot.transform, false);
+            body.AddComponent<MeshFilter>().sharedMesh = _catchBagMesh;
+            body.AddComponent<MeshRenderer>().sharedMaterial = _catchBagBodyMaterial;
+
+            CreateBagBlock("BagRim", new Vector3(0f, 0.39f, 0.02f), new Vector3(0.92f, 0.13f, 0.07f), _basketMaterial);
+            CreateBagBlock("FrontPocket", new Vector3(0f, -0.14f, 0.025f), new Vector3(0.58f, 0.30f, 0.08f), _basketMaterial);
+            CreateBagBlock("PocketFlap", new Vector3(0f, 0.02f, 0.07f), new Vector3(0.60f, 0.08f, 0.04f), _basketMaterial);
+
+            GameObject handleObject = new GameObject("BagHandle");
+            handleObject.transform.SetParent(_catchBagRoot.transform, false);
+            LineRenderer handle = handleObject.AddComponent<LineRenderer>();
+            handle.useWorldSpace = false;
+            handle.sharedMaterial = _basketMaterial;
+            handle.widthMultiplier = 0.065f;
+            handle.numCapVertices = 3;
+            handle.numCornerVertices = 2;
+            handle.positionCount = 9;
+            for (int i = 0; i < handle.positionCount; i++)
+            {
+                float t = i / (float)(handle.positionCount - 1);
+                handle.SetPosition(i, new Vector3(
+                    Mathf.Lerp(-0.34f, 0.34f, t),
+                    0.42f + Mathf.Sin(t * Mathf.PI) * 0.42f,
+                    0.04f));
+            }
+        }
+
+        private void CreateTexturedCatchBag()
+        {
+            float aspect = CatchBagTexture.width / (float)Mathf.Max(1, CatchBagTexture.height);
+            float halfHeight = 0.78f;
+            float halfWidth = halfHeight * aspect;
+            _catchBagMesh = new Mesh { name = "FishingCatchBag_Image" };
+            _catchBagMesh.vertices = new[]
+            {
+                new Vector3(-halfWidth, -halfHeight, 0f),
+                new Vector3(halfWidth, -halfHeight, 0f),
+                new Vector3(halfWidth, halfHeight, 0f),
+                new Vector3(-halfWidth, halfHeight, 0f)
+            };
+            _catchBagMesh.uv = new[]
+            {
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 1f),
+                new Vector2(0f, 1f)
+            };
+            _catchBagMesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+            _catchBagMesh.RecalculateNormals();
+            _catchBagMesh.RecalculateBounds();
+
+            GameObject image = new GameObject("BagImage");
+            image.transform.SetParent(_catchBagRoot.transform, false);
+            image.AddComponent<MeshFilter>().sharedMesh = _catchBagMesh;
+            image.AddComponent<MeshRenderer>().sharedMaterial = _catchBagBodyMaterial;
+        }
+
+        private void CreateBagBlock(string name, Vector3 localPosition, Vector3 localScale, Material material)
+        {
+            GameObject block = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            block.name = name;
+            block.transform.SetParent(_catchBagRoot.transform, false);
+            block.transform.localPosition = localPosition;
+            block.transform.localScale = localScale;
+            block.GetComponent<MeshRenderer>().sharedMaterial = material;
+            Collider collider = block.GetComponent<Collider>();
+            if (collider != null) DestroyObjectSafe(collider);
         }
 
         private static Shader FindShader(params string[] names)
@@ -1858,6 +1976,12 @@ namespace Fishing.V2
             _bobberRippleMaterial = null;
             DestroyObjectSafe(_basketMaterial);
             _basketMaterial = null;
+            DestroyObjectSafe(_catchBagBodyMaterial);
+            _catchBagBodyMaterial = null;
+            DestroyObjectSafe(_catchBagMesh);
+            _catchBagMesh = null;
+            DestroyObjectSafe(_catchBagRoot);
+            _catchBagRoot = null;
             _bobberRingLine = null;
             _bobberRippleLine = null;
 
@@ -1893,56 +2017,254 @@ namespace Fishing.V2
                 return;
             }
 
-            bool isCasual = _presentation.Variant == FishingV2PresentationVariant.CasualFishing;
-            float panelWidth = isCasual ? 236f : 190f;
-            float panelHeight = isCasual ? 92f + _caught.Count * 18f : 72f;
-
-            GUI.color = Fade(isCasual
-                ? new Color(0.01f, 0.035f, 0.045f, 0.90f)
-                : new Color(0.01f, 0.035f, 0.045f, 0.40f), hud);
-            GUI.DrawTexture(new Rect(10f, 10f, panelWidth, panelHeight), Texture2D.whiteTexture);
-
-            GUI.color = Fade(_presentation.AccentColor, hud);
-            GUI.Label(new Rect(16f, 14f, panelWidth - 22f, 22f), "낚시터  ·  " + FormatTime(_timeLeft));
-            GUI.color = Fade(new Color(0.88f, 0.95f, 0.96f, 1f), hud);
-            GUI.Label(new Rect(16f, 38f, panelWidth - 22f, 22f), "점수 " + _score + "  ·  물고기 " + _fish.Count);
-
-            int row = 0;
-            if (_presentation.ShowSpeciesCounters)
-            {
-                foreach (KeyValuePair<string, int> entry in _caught)
-                {
-                    string label = entry.Key;
-                    if (_speciesById.TryGetValue(entry.Key, out FishSpeciesConfig species) && species != null)
-                    {
-                        label = species.DisplayName;
-                    }
-
-                    GUI.color = Fade(new Color(0.72f, 0.84f, 0.86f, 1f), hud);
-                    GUI.Label(new Rect(16f, 66f + row * 18f, panelWidth - 22f, 18f), label + "  " + entry.Value);
-                    row++;
-                }
-            }
-
-            GUI.color = Fade(new Color(_presentation.AccentColor.r, _presentation.AccentColor.g, _presentation.AccentColor.b, 0.78f), hud);
-            GUI.Label(new Rect(Screen.width - 190f, 14f, 178f, 22f), _presentation.DisplayName);
-            GUI.color = Fade(new Color(0.62f, 0.78f, 0.82f, 0.72f), hud);
-            GUI.Label(
-                new Rect(Screen.width - 250f, 34f, 238f, 20f),
-                "water · " + _waterPresentation.Phase + " · " + _activeWaterProfile.DisplayName);
-
-            float promptY = _presentation.ShowSpeciesCounters ? 74f + _caught.Count * 18f : 82f;
-            GUI.color = Fade(new Color(0.78f, 0.88f, 0.89f, 0.95f), hud);
-            if (!_running)
-            {
-                GUI.Label(new Rect(16f, promptY, 380f, 24f), "세션 종료 — 잡은 물고기는 유지됩니다");
-            }
-            else if (_bobber == null || !_bobber.IsInWater)
-            {
-                GUI.Label(new Rect(16f, promptY, 460f, 24f), "수면을 클릭하면 찌를 던집니다 · 입질 중 클릭하면 즉시 회수");
-            }
+            float scale = Mathf.Clamp(Screen.height / 900f, 0.78f, 1.28f);
+            EnsureHudStyles(scale);
+            DrawCatchHud(hud, scale);
+            DrawControlGuide(hud, scale);
+            DrawGameplayPrompt(hud, scale);
 
             GUI.color = Color.white;
+        }
+
+        private void EnsureHudStyles(float scale)
+        {
+            if (_hudTitleStyle != null && Mathf.Abs(_hudStyleScale - scale) < 0.01f) return;
+            _hudStyleScale = scale;
+
+            _hudTitleStyle = CreateHudStyle(Mathf.RoundToInt(13f * scale), FontStyle.Bold, TextAnchor.MiddleLeft);
+            _hudTimerStyle = CreateHudStyle(Mathf.RoundToInt(24f * scale), FontStyle.Bold, TextAnchor.MiddleRight);
+            _hudLabelStyle = CreateHudStyle(Mathf.RoundToInt(12f * scale), FontStyle.Normal, TextAnchor.MiddleLeft);
+            _hudCountStyle = CreateHudStyle(Mathf.RoundToInt(15f * scale), FontStyle.Bold, TextAnchor.MiddleCenter);
+            _hudSmallStyle = CreateHudStyle(Mathf.RoundToInt(10f * scale), FontStyle.Normal, TextAnchor.MiddleCenter);
+            _hudPromptStyle = CreateHudStyle(Mathf.RoundToInt(14f * scale), FontStyle.Bold, TextAnchor.MiddleCenter);
+        }
+
+        private static GUIStyle CreateHudStyle(int fontSize, FontStyle fontStyle, TextAnchor alignment)
+        {
+            GUIStyle style = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = fontSize,
+                fontStyle = fontStyle,
+                alignment = alignment,
+                clipping = TextClipping.Clip
+            };
+            style.normal.textColor = Color.white;
+            return style;
+        }
+
+        private void DrawCatchHud(float hud, float scale)
+        {
+            float margin = 18f * scale;
+            float width = 398f * scale;
+            float height = 150f * scale;
+            Rect panel = new Rect(margin, margin, width, height);
+            DrawHudRect(panel, new Color(0.015f, 0.045f, 0.055f, 0.88f), hud);
+            DrawHudRect(new Rect(panel.x, panel.y, 5f * scale, panel.height), _presentation.AccentColor, hud);
+
+            GUI.color = Fade(new Color(0.76f, 0.91f, 0.91f, 1f), hud);
+            GUI.Label(new Rect(panel.x + 17f * scale, panel.y + 11f * scale, 180f * scale, 23f * scale), "잔잔한 낚시터", _hudTitleStyle);
+            GUI.color = Fade(Color.white, hud);
+            GUI.Label(new Rect(panel.x + 226f * scale, panel.y + 5f * scale, 153f * scale, 36f * scale), FormatTime(_timeLeft), _hudTimerStyle);
+
+            DrawHudRect(new Rect(panel.x + 17f * scale, panel.y + 40f * scale, 105f * scale, 24f * scale), new Color(0.07f, 0.17f, 0.18f, 0.92f), hud);
+            GUI.color = Fade(_presentation.AccentColor, hud);
+            GUI.Label(new Rect(panel.x + 23f * scale, panel.y + 40f * scale, 94f * scale, 24f * scale), "점수  " + _score, _hudTitleStyle);
+
+            float rowY = panel.y + 72f * scale;
+            float slotWidth = 72f * scale;
+            for (int i = 0; i < HudSpeciesOrder.Length; i++)
+            {
+                string speciesId = HudSpeciesOrder[i];
+                if (!_speciesById.TryGetValue(speciesId, out FishSpeciesConfig species) || species == null) continue;
+
+                float x = panel.x + 16f * scale + i * slotWidth;
+                Rect iconBack = new Rect(x, rowY, 64f * scale, 42f * scale);
+                DrawHudRect(iconBack, new Color(0.045f, 0.105f, 0.115f, 0.95f), hud);
+                Texture2D icon = species.HudIcon != null ? species.HudIcon : GetOrCreateHudIcon(species);
+                if (icon != null)
+                {
+                    GUI.color = Fade(Color.white, hud);
+                    float portraitScale = Mathf.Clamp(species.HudIconScale, 0.45f, 1f);
+                    float portraitWidth = 60f * portraitScale * scale;
+                    float portraitHeight = 34f * portraitScale * scale;
+                    float portraitX = x + (64f * scale - portraitWidth) * 0.5f;
+                    float portraitY = rowY + (36f * scale - portraitHeight) * 0.5f;
+                    GUI.DrawTexture(
+                        new Rect(portraitX, portraitY, portraitWidth, portraitHeight),
+                        icon,
+                        ScaleMode.StretchToFill,
+                        true);
+                }
+
+                int count = _caught.TryGetValue(speciesId, out int value) ? value : 0;
+                GUI.color = Fade(new Color(0.91f, 0.96f, 0.95f, 1f), hud);
+                GUI.Label(new Rect(x, rowY + 37f * scale, 64f * scale, 22f * scale), "× " + count, _hudCountStyle);
+                GUI.color = Fade(new Color(0.62f, 0.75f, 0.75f, 1f), hud);
+                GUI.Label(new Rect(x, rowY + 57f * scale, 64f * scale, 17f * scale), species.DisplayName, _hudSmallStyle);
+            }
+        }
+
+        private void DrawControlGuide(float hud, float scale)
+        {
+            float margin = 18f * scale;
+            float width = 282f * scale;
+            float height = 134f * scale;
+            Rect panel = new Rect(Screen.width - width - margin, margin, width, height);
+            DrawHudRect(panel, new Color(0.015f, 0.045f, 0.055f, 0.84f), hud);
+
+            GUI.color = Fade(_presentation.AccentColor, hud);
+            GUI.Label(new Rect(panel.x + 14f * scale, panel.y + 8f * scale, 100f * scale, 24f * scale), "조작", _hudTitleStyle);
+            DrawControlRow(panel, 36f, "CLICK", "찌 배치 · 입질 중 즉시 회수", hud, scale);
+            DrawControlRow(panel, 68f, "R", "새 세션", hud, scale);
+            DrawControlRow(panel, 100f, "T", "시작 연출 건너뛰기", hud, scale);
+        }
+
+        private void DrawControlRow(Rect panel, float y, string key, string description, float hud, float scale)
+        {
+            Rect keyRect = new Rect(panel.x + 14f * scale, panel.y + y * scale, 54f * scale, 23f * scale);
+            DrawHudRect(keyRect, new Color(0.10f, 0.21f, 0.22f, 1f), hud);
+            GUI.color = Fade(new Color(1f, 0.78f, 0.37f, 1f), hud);
+            GUI.Label(keyRect, key, _hudSmallStyle);
+            GUI.color = Fade(new Color(0.84f, 0.92f, 0.92f, 1f), hud);
+            GUI.Label(new Rect(panel.x + 78f * scale, panel.y + y * scale, 188f * scale, 23f * scale), description, _hudLabelStyle);
+        }
+
+        private void DrawGameplayPrompt(float hud, float scale)
+        {
+            string prompt = null;
+            if (!_running) prompt = "세션 종료 · R 키로 다시 시작";
+            else if ((_catchFlight == null || _catchFlight.ActiveFlightCount == 0) &&
+                     (_bobber == null || !_bobber.IsInWater))
+            {
+                prompt = "수면을 클릭해 찌를 던지세요";
+            }
+            if (string.IsNullOrEmpty(prompt)) return;
+
+            float width = 340f * scale;
+            Rect panel = new Rect((Screen.width - width) * 0.5f, Screen.height - 70f * scale, width, 38f * scale);
+            DrawHudRect(panel, new Color(0.01f, 0.035f, 0.045f, 0.82f), hud);
+            GUI.color = Fade(new Color(0.90f, 0.96f, 0.96f, 1f), hud);
+            GUI.Label(panel, prompt, _hudPromptStyle);
+        }
+
+        private static void DrawHudRect(Rect rect, Color color, float hud)
+        {
+            GUI.color = Fade(color, hud);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+        }
+
+        private Texture2D GetOrCreateHudIcon(FishSpeciesConfig species)
+        {
+            if (species == null || string.IsNullOrEmpty(species.SpeciesId)) return null;
+            if (_hudIconCache.TryGetValue(species.SpeciesId, out Texture2D cached) && cached != null) return cached;
+
+            Texture2D icon = BuildPrototypeHudIcon(species);
+            _hudIconCache[species.SpeciesId] = icon;
+            return icon;
+        }
+
+        private static Texture2D BuildPrototypeHudIcon(FishSpeciesConfig species)
+        {
+            const int width = 96;
+            const int height = 48;
+            Color32[] pixels = new Color32[width * height];
+            FishVisualSpec visual = species.Visual ?? new FishVisualSpec();
+            Color body = visual.BaseColor;
+            Color edge = visual.EdgeColor;
+            Color fin = visual.FinColor;
+
+            bool squid = visual.Arms != null && visual.Arms.Count > 0;
+            if (squid)
+            {
+                DrawIconEllipse(pixels, width, height, 59, 24, 24, 12, body, edge);
+                for (int i = 0; i < 7; i++)
+                {
+                    int offset = i - 3;
+                    DrawIconLine(pixels, width, height, 38, 24 + offset * 2, 8, 18 + offset * 3, fin, 2);
+                }
+            }
+            else
+            {
+                DrawIconTriangle(pixels, width, height, new Vector2(31, 24), new Vector2(9, 8), new Vector2(12, 39), fin);
+                DrawIconEllipse(pixels, width, height, 56, 24, 29, 12, body, edge);
+                DrawIconTriangle(pixels, width, height, new Vector2(49, 17), new Vector2(36, 5), new Vector2(61, 17), fin);
+            }
+
+            DrawIconCircle(pixels, width, height, 75, 20, 4, Color.white);
+            DrawIconCircle(pixels, width, height, 76, 20, 2, new Color(0.015f, 0.025f, 0.03f, 1f));
+
+            Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                name = "HudIcon_Prototype_" + species.SpeciesId,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.DontSave
+            };
+            texture.SetPixels32(pixels);
+            texture.Apply(false, false);
+            return texture;
+        }
+
+        private static void DrawIconEllipse(Color32[] pixels, int width, int height, int cx, int cy, int rx, int ry, Color center, Color edge)
+        {
+            for (int y = -ry; y <= ry; y++)
+            {
+                for (int x = -rx; x <= rx; x++)
+                {
+                    float distance = x * x / (float)(rx * rx) + y * y / (float)(ry * ry);
+                    if (distance > 1f) continue;
+                    SetIconPixel(pixels, width, height, cx + x, cy + y, Color.Lerp(center, edge, Mathf.Clamp01(distance * 0.62f)));
+                }
+            }
+        }
+
+        private static void DrawIconCircle(Color32[] pixels, int width, int height, int cx, int cy, int radius, Color color)
+        {
+            for (int y = -radius; y <= radius; y++)
+            for (int x = -radius; x <= radius; x++)
+                if (x * x + y * y <= radius * radius) SetIconPixel(pixels, width, height, cx + x, cy + y, color);
+        }
+
+        private static void DrawIconTriangle(Color32[] pixels, int width, int height, Vector2 a, Vector2 b, Vector2 c, Color color)
+        {
+            int minX = Mathf.FloorToInt(Mathf.Min(a.x, Mathf.Min(b.x, c.x)));
+            int maxX = Mathf.CeilToInt(Mathf.Max(a.x, Mathf.Max(b.x, c.x)));
+            int minY = Mathf.FloorToInt(Mathf.Min(a.y, Mathf.Min(b.y, c.y)));
+            int maxY = Mathf.CeilToInt(Mathf.Max(a.y, Mathf.Max(b.y, c.y)));
+            float area = Cross2D(b - a, c - a);
+            if (Mathf.Abs(area) < 0.001f) return;
+            for (int y = minY; y <= maxY; y++)
+            for (int x = minX; x <= maxX; x++)
+            {
+                Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
+                float ab = Cross2D(b - a, p - a) / area;
+                float bc = Cross2D(c - b, p - b) / area;
+                float ca = Cross2D(a - c, p - c) / area;
+                if (ab >= 0f && bc >= 0f && ca >= 0f) SetIconPixel(pixels, width, height, x, y, color);
+            }
+        }
+
+        private static void DrawIconLine(Color32[] pixels, int width, int height, int x0, int y0, int x1, int y1, Color color, int thickness)
+        {
+            int steps = Mathf.Max(Mathf.Abs(x1 - x0), Mathf.Abs(y1 - y0));
+            for (int i = 0; i <= steps; i++)
+            {
+                float t = steps > 0 ? i / (float)steps : 0f;
+                int x = Mathf.RoundToInt(Mathf.Lerp(x0, x1, t));
+                int y = Mathf.RoundToInt(Mathf.Lerp(y0, y1, t));
+                DrawIconCircle(pixels, width, height, x, y, thickness, color);
+            }
+        }
+
+        private static float Cross2D(Vector2 a, Vector2 b)
+        {
+            return a.x * b.y - a.y * b.x;
+        }
+
+        private static void SetIconPixel(Color32[] pixels, int width, int height, int x, int y, Color color)
+        {
+            if (x < 0 || x >= width || y < 0 || y >= height) return;
+            pixels[y * width + x] = color;
         }
 
         /// <summary>

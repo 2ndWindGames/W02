@@ -123,6 +123,7 @@ namespace Fishing.V2
             {
                 SpeciesId = "anchovy",
                 DisplayName = "멸치",
+                HudIconScale = 0.58f,
                 PathType = FishPathType.Lane,
                 BaseScore = 2,
                 Zone = new Vector2(.05f, .45f),
@@ -169,6 +170,7 @@ namespace Fishing.V2
             {
                 SpeciesId = "salmon",
                 DisplayName = "연어",
+                HudIconScale = 0.78f,
                 PathType = FishPathType.Lane,
                 BaseScore = 1,
                 Zone = new Vector2(.05f, .95f),
@@ -215,6 +217,7 @@ namespace Fishing.V2
             {
                 SpeciesId = "mahi",
                 DisplayName = "만새기",
+                HudIconScale = 0.86f,
                 PathType = FishPathType.Loop,
                 BaseScore = 3,
                 Zone = new Vector2(.25f, .75f),
@@ -271,6 +274,7 @@ namespace Fishing.V2
             {
                 SpeciesId = "squid",
                 DisplayName = "오징어",
+                HudIconScale = 0.82f,
                 PathType = FishPathType.HoverDash,
                 BaseScore = 5,
                 Zone = new Vector2(.20f, .80f),
@@ -323,6 +327,7 @@ namespace Fishing.V2
             {
                 SpeciesId = "tuna",
                 DisplayName = "참치",
+                HudIconScale = 1.00f,
                 PathType = FishPathType.Loop,
                 BaseScore = 30,
                 Zone = new Vector2(.50f, .95f),

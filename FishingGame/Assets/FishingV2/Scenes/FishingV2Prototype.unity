@@ -200,6 +200,7 @@ MonoBehaviour:
     CrossingFraction: 0.84
   EnableDebugHotkeys: 1
   BottomSubstrateTexture: {fileID: 2800000, guid: 49b49a1553451d94085a50b4a9bd70b3, type: 3}
+  CatchBagTexture: {fileID: 2800000, guid: d2259d2587a66a746898e2baa8fc14d7, type: 3}
 --- !u!4 &224227276
 Transform:
   m_ObjectHideFlags: 0
