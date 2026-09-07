@@ -164,7 +164,9 @@ namespace Fishing.V2.EditorTools
                 FishSpeciesAsset asset = assets[i];
                 if (asset == null || asset.Data == null) continue;
                 Mesh mesh = FishMeshBuilderV2.Build(asset.Data);
-                string path = Root + "/Art/Fish_" + asset.Data.SpeciesId + ".asset";
+                string meshName = "Fish_" + asset.Data.SpeciesId;
+                mesh.name = meshName;
+                string path = Root + "/Art/" + meshName + ".asset";
                 Mesh existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
                 if (existing == null)
                 {
@@ -173,6 +175,7 @@ namespace Fishing.V2.EditorTools
                 else
                 {
                     EditorUtility.CopySerialized(mesh, existing);
+                    existing.name = meshName;
                     Object.DestroyImmediate(mesh);
                     EditorUtility.SetDirty(existing);
                 }
