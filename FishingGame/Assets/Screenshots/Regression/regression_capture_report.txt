@@ -1,0 +1,12 @@
+Fishing V2 normal regression evidence capture
+capturedAt=2026-09-07T17:31:27.1484831+09:00
+scene=Assets/FishingV2/Scenes/FishingV2Prototype.unity
+flightVisualCaptured=True
+arrivalCaptured=True
+respawnCaptured=True
+captures=4
+---
+capture=cast;bobber=InWater;hitSpecies=none;activeCatchFlights=0;arrivals=0;respawns=0;path=A:/A_Workspace/_Unity/FishingGame/Assets/Screenshots/Regression/regression_cast_20260907_173121.png
+capture=catchflight;bobber=Reeling;hitSpecies=none;activeCatchFlights=1;arrivals=0;respawns=1;path=A:/A_Workspace/_Unity/FishingGame/Assets/Screenshots/Regression/regression_catchflight_20260907_173125.png
+capture=arrival;bobber=InWater;hitSpecies=none;activeCatchFlights=0;arrivals=1;respawns=1;path=A:/A_Workspace/_Unity/FishingGame/Assets/Screenshots/Regression/regression_arrival_20260907_173126.png
+capture=respawn;bobber=InWater;hitSpecies=none;activeCatchFlights=0;arrivals=1;respawns=1;path=A:/A_Workspace/_Unity/FishingGame/Assets/Screenshots/Regression/regression_respawn_20260907_173126.png

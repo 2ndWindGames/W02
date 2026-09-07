@@ -1,0 +1,9 @@
+Fishing V2 After-Bite evidence capture
+capturedAt=2026-09-04T10:54:24.1258341+09:00
+scene=Assets/FishingV2/Scenes/FishingV2Prototype.unity
+modes=peel,pass,school,arc,jet
+mode=peel;species=salmon;state=AfterBite;profileMode=Peel;expectedMode=Peel;progress=0.306;path=A:/A_Workspace/_Unity/FishingGame/Assets/Screenshots/AfterBite/afterbite_peel_20260904_105418.png
+mode=pass;species=tuna;state=AfterBite;profileMode=Pass;expectedMode=Pass;progress=0.243;path=A:/A_Workspace/_Unity/FishingGame/Assets/Screenshots/AfterBite/afterbite_pass_20260904_105419.png
+mode=school;species=anchovy;state=AfterBite;profileMode=School;expectedMode=School;progress=0.820;path=A:/A_Workspace/_Unity/FishingGame/Assets/Screenshots/AfterBite/afterbite_school_20260904_105420.png
+mode=arc;species=mahi;state=AfterBite;profileMode=Arc;expectedMode=Arc;progress=0.381;path=A:/A_Workspace/_Unity/FishingGame/Assets/Screenshots/AfterBite/afterbite_arc_20260904_105422.png
+mode=jet;species=squid;state=AfterBite;profileMode=Jet;expectedMode=Jet;progress=0.484;path=A:/A_Workspace/_Unity/FishingGame/Assets/Screenshots/AfterBite/afterbite_jet_20260904_105423.png
