@@ -28,17 +28,40 @@ namespace Fishing.V2
             public Action<FishSpeciesConfig, float> OnArrive;
             public MaterialPropertyBlock PropertyBlock;
             public MeshRenderer Renderer;
+            public GameObject ShadowObject;
+            public MaterialPropertyBlock ShadowPropertyBlock;
+            public MeshRenderer ShadowRenderer;
+            public float VisualDepth;
         }
 
         private readonly List<Flight> _flights = new List<Flight>();
         private FishingV2TuningAsset _tuning;
         private Material _flightMaterial;
+        private Material _shadowMaterial;
+        private FishingV2PresentationSettings _presentation;
         private int _basketIndex;
+
+        public int ActiveFlightCount { get { return _flights.Count; } }
 
         public void Initialize(FishingV2TuningAsset tuning, Material flightMaterial)
         {
+            Initialize(
+                tuning,
+                flightMaterial,
+                null,
+                FishingV2PresentationSettings.For(FishingV2PresentationVariant.CalmObservation));
+        }
+
+        public void Initialize(
+            FishingV2TuningAsset tuning,
+            Material flightMaterial,
+            Material shadowMaterial,
+            FishingV2PresentationSettings presentation)
+        {
             _tuning = tuning;
             _flightMaterial = flightMaterial;
+            _shadowMaterial = shadowMaterial;
+            _presentation = presentation;
         }
 
         public void Launch(FishAgentV2 fish, Vector3 target, Action<FishSpeciesConfig, float> onArrive)
@@ -55,6 +78,14 @@ namespace Fishing.V2
             meshFilter.sharedMesh = fish.SharedMesh;
             MeshRenderer renderer = flyer.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = fish.SharedMaterial != null ? fish.SharedMaterial : _flightMaterial;
+
+            GameObject shadowObject = new GameObject("Shadow");
+            shadowObject.transform.SetParent(transform, true);
+            shadowObject.layer = gameObject.layer;
+            MeshFilter shadowFilter = shadowObject.AddComponent<MeshFilter>();
+            shadowFilter.sharedMesh = fish.SharedMesh;
+            MeshRenderer shadowRenderer = shadowObject.AddComponent<MeshRenderer>();
+            shadowRenderer.sharedMaterial = _shadowMaterial != null ? _shadowMaterial : renderer.sharedMaterial;
 
             // Keep the reward flight in the same foreground depth band as the fish and bobber.
             Vector3 from = new Vector3(fish.Position.x, fish.Position.y, fish.WorldDepthZ);
@@ -81,7 +112,11 @@ namespace Fishing.V2
                 SizeCm = fish.SizeCm,
                 OnArrive = onArrive,
                 PropertyBlock = new MaterialPropertyBlock(),
-                Renderer = renderer
+                Renderer = renderer,
+                ShadowObject = shadowObject,
+                ShadowPropertyBlock = new MaterialPropertyBlock(),
+                ShadowRenderer = shadowRenderer,
+                VisualDepth = fish.VisualDepth01
             };
 
             flyer.transform.position = from;
@@ -147,6 +182,7 @@ namespace Fishing.V2
                     {
                         if (flight.OnArrive != null) flight.OnArrive(flight.Species, flight.SizeCm);
                         DestroyObjectSafe(flight.Object);
+                        DestroyObjectSafe(flight.ShadowObject);
                         _flights.RemoveAt(i);
                         continue;
                     }
@@ -157,6 +193,7 @@ namespace Fishing.V2
                 flight.Object.transform.rotation = Quaternion.Euler(0f, 0f,
                     flight.Heading - normalizedFlight * 0.5f + Mathf.Sin(normalizedFlight * 8f) * 0.09f * (1f - normalizedFlight));
                 flight.Object.transform.localScale = Vector3.one * scale;
+                UpdateProjectedShadow(flight, position);
 
                 if (flight.Renderer != null)
                 {
@@ -190,6 +227,44 @@ namespace Fishing.V2
                     flight.Renderer.SetPropertyBlock(flight.PropertyBlock);
                 }
             }
+        }
+
+        private void UpdateProjectedShadow(Flight flight, Vector3 flightPosition)
+        {
+            if (flight.ShadowObject == null || flight.ShadowRenderer == null)
+            {
+                return;
+            }
+
+            Vector3 lightDirection = _presentation.LightDirection.sqrMagnitude > 0.001f
+                ? _presentation.LightDirection.normalized
+                : new Vector3(-0.36f, 0.58f, 0.73f).normalized;
+            float bottomZ = Mathf.Min(_presentation.ShadowBottomZ, flightPosition.z - 0.01f);
+            float lightZ = Mathf.Max(0.05f, Mathf.Abs(lightDirection.z));
+            float verticalDistance = Mathf.Max(0.02f, flightPosition.z - bottomZ);
+            Vector2 offset = new Vector2(
+                -lightDirection.x / lightZ,
+                -lightDirection.y / lightZ) * verticalDistance * _presentation.ShadowDepthInfluence;
+
+            float height = Mathf.Max(0f, flightPosition.z - flight.From.z);
+            float heightFade = 1f / (1f + height * 1.1f);
+            float depth = Mathf.Clamp01(flight.VisualDepth);
+            float shadowScale = Mathf.Lerp(_presentation.ShadowMaxScale * 1.10f, _presentation.ShadowMinScale * 0.94f, depth);
+            float softnessBase = Mathf.Max(_presentation.ShadowSoftness, 0.74f);
+            float softness = Mathf.Clamp01(Mathf.Lerp(softnessBase, 0.32f, depth) + height * 0.18f);
+            float opacity = Mathf.Lerp(_presentation.ShadowMinOpacity * 0.16f, _presentation.ShadowMaxOpacity * 0.42f, depth) * heightFade;
+
+            flight.ShadowObject.transform.position = new Vector3(
+                flightPosition.x + offset.x,
+                flightPosition.y + offset.y,
+                bottomZ);
+            flight.ShadowObject.transform.rotation = flight.Object.transform.rotation;
+            flight.ShadowObject.transform.localScale = Vector3.one * (flight.BaseScale * shadowScale);
+            flight.ShadowPropertyBlock.Clear();
+            flight.ShadowPropertyBlock.SetColor("_ShadowColor", new Color(0.042f, 0.130f, 0.140f, opacity));
+            flight.ShadowPropertyBlock.SetFloat("_Softness", softness);
+            flight.ShadowPropertyBlock.SetFloat("_Depth", depth);
+            flight.ShadowRenderer.SetPropertyBlock(flight.ShadowPropertyBlock);
         }
 
         public Vector3 NextBasketTarget(Rect pond)

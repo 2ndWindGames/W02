@@ -29,6 +29,7 @@ namespace Fishing.V2.EditorTools
             int errors = 0;
             int playableCount = 0;
             int validationCount = 0;
+            HashSet<AfterBiteMode> afterBiteModes = new HashSet<AfterBiteMode>();
 
             for (int i = 0; i < species.Count; i++)
             {
@@ -55,6 +56,15 @@ namespace Fishing.V2.EditorTools
                     errors++;
                     Debug.LogError("Fishing V2 v25 validation: incomplete data contract for " + config.SpeciesId);
                     continue;
+                }
+
+                afterBiteModes.Add(config.AfterBite.Mode);
+                if (config.AfterBite.Duration.Min <= 0f || config.AfterBite.Duration.Max < config.AfterBite.Duration.Min ||
+                    config.AfterBite.SpeedK < 0f || config.AfterBite.Cooldown.Min < 0f ||
+                    config.AfterBite.Cooldown.Max < config.AfterBite.Cooldown.Min)
+                {
+                    errors++;
+                    Debug.LogError("Fishing V2 v25 validation: invalid After-Bite profile for " + config.SpeciesId);
                 }
 
                 Mesh mesh = FishMeshBuilderV2.Build(config);
@@ -122,6 +132,8 @@ namespace Fishing.V2.EditorTools
                 Debug.LogError("Fishing V2 v25 validation: expected " + ExpectedValidationSpecies.Length + " validation species, got " + validationCount);
             }
 
+            ValidateAfterBiteModes(afterBiteModes, ref errors);
+
             ValidateCatchMath(ref errors);
 
             if (errors == 0)
@@ -142,6 +154,27 @@ namespace Fishing.V2.EditorTools
                 {
                     errors++;
                     Debug.LogError("Fishing V2 v25 validation: missing " + (validationOnly ? "validation" : "playable") + " species " + expected[i]);
+                }
+            }
+        }
+
+        private static void ValidateAfterBiteModes(HashSet<AfterBiteMode> actual, ref int errors)
+        {
+            AfterBiteMode[] expected =
+            {
+                AfterBiteMode.Peel,
+                AfterBiteMode.Pass,
+                AfterBiteMode.School,
+                AfterBiteMode.Arc,
+                AfterBiteMode.Jet
+            };
+
+            for (int i = 0; i < expected.Length; i++)
+            {
+                if (!actual.Contains(expected[i]))
+                {
+                    errors++;
+                    Debug.LogError("Fishing V2 v25 validation: missing After-Bite mode " + expected[i]);
                 }
             }
         }

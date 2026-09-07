@@ -58,6 +58,10 @@ namespace Fishing.V2
         private float _timeLeft;
         private float _lastLureTime = -100f;
         private int _score;
+        private int _spawnedFishCount;
+        private int _catchFlightArrivals;
+        private int _respawnsScheduled;
+        private int _respawnsSpawned;
         private bool _initialized;
         private bool _running;
         private Transform _fishRoot;
@@ -69,12 +73,14 @@ namespace Fishing.V2
         private Material _simpleMaterial;
         private Material _bobberRingMaterial;
         private Material _bobberRippleMaterial;
+        private Material _bobberGaugeMaterial;
         private Material _basketMaterial;
         private Material _catchBagBodyMaterial;
         private GameObject _catchBagRoot;
         private Mesh _catchBagMesh;
         private LineRenderer _bobberRingLine;
         private LineRenderer _bobberRippleLine;
+        private LineRenderer _bobberGaugeLine;
         private Camera _camera;
         private Camera _underwaterCamera;
         private RenderTexture _underwaterSceneTexture;
@@ -139,6 +145,12 @@ namespace Fishing.V2
         public Rect Pond { get { return _pond; } }
         public float TimeLeft { get { return _timeLeft; } }
         public int Score { get { return _score; } }
+        public int SpawnedFishCount { get { return _spawnedFishCount; } }
+        public int CatchFlightArrivals { get { return _catchFlightArrivals; } }
+        public int ActiveCatchFlightCount { get { return _catchFlight != null ? _catchFlight.ActiveFlightCount : 0; } }
+        public int RespawnsScheduled { get { return _respawnsScheduled; } }
+        public int RespawnsSpawned { get { return _respawnsSpawned; } }
+        public int PendingRespawnCount { get { return _respawns.Count; } }
         public bool IsRunning { get { return _running; } }
         public BobberV2 Bobber { get { return _bobber; } }
         public IReadOnlyList<FishAgentV2> Fish { get { return _fish; } }
@@ -245,6 +257,7 @@ namespace Fishing.V2
             // URP Unlit defaults.
             if (_bobberRingLine != null) ConfigureTransparentLineMaterial(_bobberRingLine.material);
             if (_bobberRippleLine != null) ConfigureTransparentLineMaterial(_bobberRippleLine.material);
+            if (_bobberGaugeLine != null) ConfigureTransparentLineMaterial(_bobberGaugeLine.material);
 
             _underwaterCamera.Render();
 
@@ -253,6 +266,7 @@ namespace Fishing.V2
             // materialization restoring URP's opaque defaults.
             if (_bobberRingLine != null) ConfigureTransparentLineMaterial(_bobberRingLine.material);
             if (_bobberRippleLine != null) ConfigureTransparentLineMaterial(_bobberRippleLine.material);
+            if (_bobberGaugeLine != null) ConfigureTransparentLineMaterial(_bobberGaugeLine.material);
         }
 
         /// <summary>
@@ -378,6 +392,10 @@ namespace Fishing.V2
             _timeLeft = Spot != null && Spot.SessionSeconds > 0f ? Spot.SessionSeconds : Tuning.SessionSeconds;
             _lastLureTime = -100f;
             _score = 0;
+            _spawnedFishCount = 0;
+            _catchFlightArrivals = 0;
+            _respawnsScheduled = 0;
+            _respawnsSpawned = 0;
             _running = true;
             if (_bobber != null)
             {
@@ -528,6 +546,9 @@ namespace Fishing.V2
         private void CastAtScreenPoint(Vector2 screenPoint)
         {
             Vector3 world = _camera.ScreenToWorldPoint(new Vector3(screenPoint.x, screenPoint.y, Mathf.Abs(_camera.transform.position.z)));
+            // ScreenToWorldPoint is already the inverse of this camera's projection. The
+            // camera intentionally has a 180-degree yaw, so world +X renders on screen left;
+            // reflecting the result here would make a right-side click visibly land left.
             CastAtPondPoint(new Vector2(world.x, world.y));
         }
 
@@ -626,7 +647,9 @@ namespace Fishing.V2
 
         private void OnFishReachedBobber(FishAgentV2 fish)
         {
-            if (!_running || fish == null || fish.State != FishState.Interested || _bobber == null)
+            if (!_running || fish == null ||
+                (fish.State != FishState.Interested && fish.State != FishState.Strike) ||
+                _bobber == null)
             {
                 return;
             }
@@ -654,7 +677,10 @@ namespace Fishing.V2
             if (_releaseSpecies.Contains(fish.Species.SpeciesId))
             {
                 _bobber.ClearBite();
-                fish.Release(2.2f, 0.5f, 0.5f);
+                // Released fish still needs a visible post-contact exit. The After-Bite
+                // profile owns that short peel/pass/school/arc/jet motion and then returns
+                // the agent to roam without entering the catch/reward pipeline.
+                fish.BeginAfterBite(_bobber.Position);
                 return;
             }
 
@@ -690,6 +716,7 @@ namespace Fishing.V2
             if (species.RespawnDelay >= 0f)
             {
                 _respawns.Add(new RespawnEntry { Species = species, DueAt = _now + species.RespawnDelay });
+                _respawnsScheduled++;
             }
 
             // 자동 회수는 같은 자리에 0.3초 회수 + 0.3초 재착수한다.
@@ -704,6 +731,7 @@ namespace Fishing.V2
             }
 
             if (!_caught.ContainsKey(species.SpeciesId)) _caught[species.SpeciesId] = 0;
+            _catchFlightArrivals++;
             _caught[species.SpeciesId]++;
             _score += species.BaseScore;
             PlayerDataV2.Instance.RecordCatch(species, sizeCm);
@@ -740,7 +768,10 @@ namespace Fishing.V2
                 _respawns.RemoveAt(i);
                 if (_running)
                 {
-                    SpawnAgent(entry.Species, null, Vector2.zero);
+                    if (SpawnAgent(entry.Species, null, Vector2.zero) != null)
+                    {
+                        _respawnsSpawned++;
+                    }
                 }
             }
         }
@@ -827,6 +858,7 @@ namespace Fishing.V2
             agent.Initialize(species, Tuning, _pond, _random, mesh, _fishMaterial, _shadowMaterial, leader, formation, _presentation);
             SetLayerRecursively(agent.transform, UnderwaterRenderLayer);
             _fish.Add(agent);
+            _spawnedFishCount++;
             return agent;
         }
 
@@ -1741,6 +1773,19 @@ namespace Fishing.V2
                 ripple.SetPosition(i, new Vector3(Mathf.Cos(angle) * 0.68f, Mathf.Sin(angle) * 0.68f, 0f));
             }
 
+            GameObject gaugeObject = new GameObject("BobberAutoReelGauge");
+            gaugeObject.transform.SetParent(transform, false);
+            gaugeObject.layer = UnderwaterRenderLayer;
+            LineRenderer gauge = gaugeObject.AddComponent<LineRenderer>();
+            gauge.useWorldSpace = false;
+            gauge.loop = false;
+            gauge.positionCount = 49;
+            gauge.widthMultiplier = 0.052f;
+            _bobberGaugeMaterial = CreateTransparentLineMaterial();
+            gauge.sharedMaterial = _bobberGaugeMaterial;
+            ConfigureTransparentLineMaterial(gauge.sharedMaterial);
+            _bobberGaugeLine = gauge;
+
             GameObject castPathObject = new GameObject("BobberCastPath");
             castPathObject.transform.SetParent(transform, false);
             castPathObject.layer = UnderwaterRenderLayer;
@@ -1763,7 +1808,8 @@ namespace Fishing.V2
                 _presentation.WaterOpticalDistortionScale,
                 _presentation.WaterOpticalDistortionSpeed,
                 _presentation.WaterBobberOpticalStrength,
-                ripple);
+                ripple,
+                gauge);
             _bobber.CastCompleted += OnCastCompleted;
             _bobber.BiteExpired += OnBiteExpired;
         }
@@ -1774,7 +1820,7 @@ namespace Fishing.V2
             flightObject.transform.SetParent(transform, false);
             flightObject.layer = UnderwaterRenderLayer;
             _catchFlight = flightObject.AddComponent<CatchFlightV2>();
-            _catchFlight.Initialize(Tuning, _fishMaterial);
+            _catchFlight.Initialize(Tuning, _fishMaterial, _shadowMaterial, _presentation);
         }
 
         private void CreateCatchBag()
@@ -1974,6 +2020,8 @@ namespace Fishing.V2
             _bobberRingMaterial = null;
             DestroyObjectSafe(_bobberRippleMaterial);
             _bobberRippleMaterial = null;
+            DestroyObjectSafe(_bobberGaugeMaterial);
+            _bobberGaugeMaterial = null;
             DestroyObjectSafe(_basketMaterial);
             _basketMaterial = null;
             DestroyObjectSafe(_catchBagBodyMaterial);
@@ -1984,6 +2032,7 @@ namespace Fishing.V2
             _catchBagRoot = null;
             _bobberRingLine = null;
             _bobberRippleLine = null;
+            _bobberGaugeLine = null;
 
             if (_underwaterSceneTexture != null)
             {

@@ -97,6 +97,15 @@ namespace Fishing.V2
         private float _contestCooldown;
         private int _contestSide = 1;
 
+        // v25 after-bite escape state. The profile is data-driven; these values are the
+        // sampled per-contact runtime state so a school member can finish naturally without
+        // rebuilding its formation slot or falling back to a generic linger.
+        private float _afterBiteDuration;
+        private float _afterBiteSpeed;
+        private float _afterBiteAim;
+        private float _afterBiteSide;
+        private AfterBiteMode _afterBiteMode;
+
         // Roam Micro and propulsion cause the path speed and the visual beat together.
         private int _microMode;
         private float _microTimer;
@@ -210,6 +219,27 @@ namespace Fishing.V2
                 return _position + heading * MouthOffset;
             }
         }
+        public AfterBiteMode CurrentAfterBiteMode { get { return _afterBiteMode; } }
+        public float AfterBiteProgress01
+        {
+            get { return _afterBiteDuration > 0f ? Mathf.Clamp01(_stateTimer / _afterBiteDuration) : 0f; }
+        }
+        /// <summary>
+        /// Returns whether the fish's mouth swept through the bobber during the current
+        /// simulation step. The root can pass beside the bobber while the authored mouth
+        /// (or a rear-biased mouth offset such as squid's) makes the actual contact.
+        /// </summary>
+        public bool TryGetMouthContact(Vector2 bobberPosition, float radius, out Vector2 contact)
+        {
+            return FishingV2CatchMath.TrySweptMouthContact(
+                _previousPosition,
+                _position,
+                _heading,
+                MouthOffset,
+                bobberPosition,
+                Mathf.Max(0.001f, radius),
+                out contact);
+        }
         public float VisualDepth01 { get { return _visualDepth; } }
         public float WorldDepthZ { get { return transform.position.z; } }
         public bool IsCaught { get { return State == FishState.Caught; } }
@@ -266,6 +296,11 @@ namespace Fishing.V2
             _contestTimer = 0f;
             _contestDuration = 0f;
             _contestCooldown = RandomRange(0.2f, 0.8f);
+            _afterBiteDuration = 0f;
+            _afterBiteSpeed = 0f;
+            _afterBiteAim = 0f;
+            _afterBiteSide = 1f;
+            _afterBiteMode = AfterBiteMode.Peel;
             _microMode = -1;
             _microTimer = 0f;
             _microDuration = 0f;
@@ -507,6 +542,50 @@ namespace Fishing.V2
             _feedInitialized = false;
         }
 
+        /// <summary>
+        /// Starts the v25 post-contact escape used by released fish and presentation-only
+        /// catch paths. The sampled aim/speed remains on the agent for the duration so the
+        /// behavior is deterministic and can preserve an existing school slot on finish.
+        /// </summary>
+        public void BeginAfterBite(Vector2 bobberPosition)
+        {
+            if (IsCaught)
+            {
+                return;
+            }
+
+            AfterBiteProfile profile = _species != null && _species.AfterBite != null
+                ? _species.AfterBite
+                : new AfterBiteProfile();
+            Vector2 away = _position - bobberPosition;
+            if (away.sqrMagnitude < 0.0001f)
+            {
+                away = -HeadingVector;
+            }
+
+            float awayAngle = Mathf.Atan2(away.y, away.x);
+            _afterBiteMode = profile.Mode;
+            _afterBiteDuration = Mathf.Max(0.10f, RandomRange(profile.Duration.Min, profile.Duration.Max));
+            _afterBiteSide = _random.NextDouble() < 0.5 ? -1f : 1f;
+            _afterBiteAim = _heading + WrapAngle(awayAngle - _heading) * Mathf.Clamp01(profile.Away) +
+                _afterBiteSide * profile.Arc;
+            _afterBiteSpeed = Mathf.Max(
+                _species != null ? _species.ApproachSpeed * Mathf.Max(0f, profile.SpeedK) : 0.5f,
+                _vSm * Mathf.Clamp01(profile.Carry));
+
+            State = FishState.AfterBite;
+            _stateTimer = 0f;
+            _approachTimer = 0f;
+            _approachStage = -1;
+            _breakOffTimer = 0f;
+            _feedInitialized = false;
+            _feedCarrySpeed = 0f;
+            _strikeReady = false;
+            _contestRival = null;
+            _contestTimer = 0f;
+            _contestDuration = 0f;
+        }
+
         public void Release(float cooldown, float radiusMultiplier, float timeMultiplier)
         {
             ReturnToRoam(cooldown);
@@ -536,6 +615,10 @@ namespace Fishing.V2
             _contestRival = null;
             _contestTimer = 0f;
             _contestDuration = 0f;
+            _afterBiteDuration = 0f;
+            _afterBiteSpeed = 0f;
+            _afterBiteAim = 0f;
+            _afterBiteSide = 1f;
             _feedInitialized = false;
             _feedCommitment = 0.5f;
             _feedDecisionTimer = 0f;
@@ -1053,6 +1136,16 @@ namespace Fishing.V2
             }
 
             _strikeReady = distance <= strikeDistance && _feedCommitment >= feed.StrikeMinimum;
+            if (_strikeReady)
+            {
+                // Keep the strike as an observable first-class state. The next fixed step
+                // owns the fast approach and mouth-contact callback, which prevents a root
+                // distance threshold from swallowing the Strike transition.
+                State = FishState.Strike;
+                _stateTimer = 0f;
+                return;
+            }
+
             int stage = GetApproachStage(distance);
             ApproachStyle style = _species.ApproachPlan != null && _species.ApproachPlan.Length > 0
                 ? _species.ApproachPlan[Mathf.Clamp(stage, 0, _species.ApproachPlan.Length - 1)].Style
@@ -1105,7 +1198,9 @@ namespace Fishing.V2
                 MoveForward(result.Speed * 0.9f, dt);
             }
 
-            if (distance < Mathf.Max(0.05f, feed.Arrival))
+            float contactRadius = Mathf.Max(0.08f, feed.Arrival * 0.72f);
+            bool mouthContact = TryGetMouthContact(bobber.Position, contactRadius, out Vector2 ignoredContact);
+            if (mouthContact || Vector2.Distance(MouthPosition, bobber.Position) <= contactRadius)
             {
                 if (onReachedBobber != null)
                 {
@@ -1146,12 +1241,10 @@ namespace Fishing.V2
             float speed = Mathf.Max(_species.ApproachSpeed * feed.StrikeSpeed, _vSm * 0.88f);
             _turnRate = SteerTowards(bobber.Position, speed, 0.58f, dt);
             MoveForward(speed, dt);
-            if (distance <= Mathf.Max(0.05f, feed.Arrival))
+            float contactRadius = Mathf.Max(0.08f, feed.Arrival * 0.72f);
+            bool mouthContact = TryGetMouthContact(bobber.Position, contactRadius, out Vector2 ignoredContact);
+            if (mouthContact || Vector2.Distance(MouthPosition, bobber.Position) <= contactRadius)
             {
-                // The legacy BobberV2 callback still accepts Interested only. Convert back
-                // for this integration seam; the post-water-merge hook path will make Strike
-                // a first-class contact state.
-                State = FishState.Interested;
                 if (onReachedBobber != null) onReachedBobber(this);
             }
             else if (_stateTimer > Mathf.Max(0.05f, feed.StrikeDuration))
@@ -1238,18 +1331,74 @@ namespace Fishing.V2
 
         private void TickAfterBite(float dt, float now, IReadOnlyList<FishAgentV2> allFish)
         {
-            // The full after-bite callback is connected after the water-branch merge. Keep a
-            // safe state fallback here so a replay or test asset cannot strand an agent.
             _stateTimer += dt;
-            if (_stateTimer > Mathf.Max(0.10f, _species.AfterBite != null ? _species.AfterBite.Duration.Max : 0.85f))
+            AfterBiteProfile profile = _species != null && _species.AfterBite != null
+                ? _species.AfterBite
+                : new AfterBiteProfile();
+            float duration = Mathf.Max(0.10f, _afterBiteDuration > 0f ? _afterBiteDuration : profile.Duration.Max);
+            float u = Mathf.Clamp01(_stateTimer / duration);
+            float aim = _afterBiteAim;
+            if (_afterBiteMode == AfterBiteMode.Arc)
             {
-                ReturnToRoam(_species.AfterBite != null ? _species.AfterBite.Cooldown.Min : 1.4f);
+                aim += _afterBiteSide * profile.Arc * Mathf.Sin(u * Mathf.PI) * 0.65f;
             }
+
+            float speed = _afterBiteSpeed > 0f ? _afterBiteSpeed * (1f - 0.18f * u) : 0.5f;
+            if (_afterBiteMode == AfterBiteMode.Jet)
+            {
+                // Jet exits sharply, then bleeds back into the sampled profile speed.
+                speed *= Mathf.Lerp(1.38f, 0.92f, u);
+                _jetCharge = Mathf.Lerp(_jetCharge, 0.15f, Mathf.Min(1f, dt * 9f));
+            }
+
+            _turnRate = SteerAngle(aim, speed, Mathf.Max(0.40f, profile.TurnBodyLengths), dt);
+            MoveForward(speed, dt);
+            ResolveHardOverlap(allFish);
+
+            if (_stateTimer >= duration)
+            {
+                FinishAfterBite(profile);
+            }
+        }
+
+        private void FinishAfterBite(AfterBiteProfile profile)
+        {
+            State = FishState.Roam;
+            _cooldown = Mathf.Max(_cooldown, RandomRange(profile.Cooldown.Min, profile.Cooldown.Max));
+            _stateTimer = 0f;
+            _approachTimer = 0f;
+            _feedCarrySpeed = 0f;
+            _afterBiteDuration = 0f;
+            _afterBiteSpeed = 0f;
+            _afterBiteAim = 0f;
+            _afterBiteSide = 1f;
+
+            // A follower returns through the existing spring slot instead of re-anchoring a
+            // path it does not own. Leaders and solo fish re-anchor at their actual exit point.
+            if (_leader != null && !_leader.IsCaught)
+            {
+                _schoolPosition = _position;
+                _schoolTarget = _position;
+                _schoolVelocity = Vector2.zero;
+                return;
+            }
+
+            ReanchorAtCurrentPosition();
         }
 
         private void TickBite(float dt, BobberV2 bobber)
         {
-            _position = Vector2.Lerp(_position, _bitePosition, Mathf.Min(1f, dt * 9f));
+            if (bobber != null && bobber.IsInWater && bobber.HitFish == this)
+            {
+                // Keep following the actual bobber position while the player holds the
+                // bite. The contact target can be several tenths away when a swept segment
+                // catches the lure; MoveTowards keeps that correction visible without a
+                // one-frame teleport that reads as a school jump.
+                _bitePosition = bobber.Position - HeadingVector * MouthOffset;
+            }
+
+            float maxStep = Mathf.Max(0.12f, dt * 8f);
+            _position = Vector2.MoveTowards(_position, _bitePosition, maxStep);
             _heading = _biteHeading;
             _turnRate = 0f;
         }

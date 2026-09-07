@@ -69,6 +69,17 @@ namespace Fishing.V2.EditorTools
         [MenuItem("Fishing V2/Run v25 all-species 90s simulation", priority = 42)]
         public static void RunV25AllSpeciesSimulation()
         {
+            RunV25AllSpeciesSimulationInternal(false);
+        }
+
+        [MenuItem("Fishing V2/Run v25 After-Bite release simulation", priority = 43)]
+        public static void RunV25AfterBiteReleaseSimulation()
+        {
+            RunV25AllSpeciesSimulationInternal(true);
+        }
+
+        private static void RunV25AllSpeciesSimulationInternal(bool exerciseAfterBite)
+        {
             Scene originalScene = SceneManager.GetActiveScene();
             Scene tempScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
             SceneManager.SetActiveScene(tempScene);
@@ -92,15 +103,28 @@ namespace Fishing.V2.EditorTools
             spot.SessionSeconds = 600f;
             spot.Species = assets;
             session.Spot = spot;
+            // The normal all-species gate keeps the catch/reward path intact. The dedicated
+            // After-Bite menu below opts one school species into the release path so this
+            // state is also exercised without changing the default simulation contract.
+            if (exerciseAfterBite)
+            {
+                session.ReleaseSpecies.Add("anchovy");
+            }
             session.InitializeRuntime();
             session.BeginSession();
             FishingV2TuningAsset tuning = session.Tuning;
+            int initialFishCount = session.Fish != null ? session.Fish.Count : 0;
 
             _errors = 0;
             Application.logMessageReceived += OnLogMessage;
             Dictionary<int, Vector2> previousPositions = new Dictionary<int, Vector2>();
+            Dictionary<int, FishAgentV2> previousAgents = new Dictionary<int, FishAgentV2>();
             float maxVisibleStep = 0f;
             int visibleLargeJumps = 0;
+            string maxStepInfo = "none";
+            int strikeFrames = 0;
+            int hookedFrames = 0;
+            int afterBiteFrames = 0;
             for (int frame = 0; frame < 5400; frame++)
             {
                 if (frame == 30)
@@ -109,6 +133,7 @@ namespace Fishing.V2.EditorTools
                 }
 
                 session.SimulateStep(1f / 60f);
+                HashSet<int> seenIds = new HashSet<int>();
                 if (session.Fish != null)
                 {
                     for (int i = 0; i < session.Fish.Count; i++)
@@ -117,8 +142,12 @@ namespace Fishing.V2.EditorTools
                         if (fish == null) continue;
 
                         int id = fish.GetInstanceID();
+                        seenIds.Add(id);
                         Vector2 previous;
-                        if (!previousPositions.TryGetValue(id, out previous))
+                        FishAgentV2 previousAgent;
+                        bool sameAgent = previousAgents.TryGetValue(id, out previousAgent) &&
+                            object.ReferenceEquals(previousAgent, fish);
+                        if (!sameAgent || !previousPositions.TryGetValue(id, out previous))
                         {
                             previous = fish.PreviousPosition;
                         }
@@ -126,10 +155,35 @@ namespace Fishing.V2.EditorTools
                         Vector2 current = fish.Position;
                         float step = Vector2.Distance(previous, current);
                         bool visible = session.Pond.Contains(previous) && session.Pond.Contains(current);
-                        if (visible && step > maxVisibleStep) maxVisibleStep = step;
+                        if (visible && step > maxVisibleStep)
+                        {
+                            maxVisibleStep = step;
+                            maxStepInfo = (fish.Species != null ? fish.Species.SpeciesId : "unknown") +
+                                " state=" + fish.State +
+                                " id=" + id +
+                                " frame=" + frame +
+                                " from=" + previous +
+                                " to=" + current +
+                                " agentPrevious=" + fish.PreviousPosition;
+                        }
                         if (visible && step > 0.75f) visibleLargeJumps++;
+                        if (fish.State == FishState.Strike) strikeFrames++;
+                        if (fish.IsHooked) hookedFrames++;
+                        if (fish.State == FishState.AfterBite) afterBiteFrames++;
                         previousPositions[id] = current;
+                        previousAgents[id] = fish;
                     }
+                }
+
+                List<int> staleIds = new List<int>();
+                foreach (int id in previousPositions.Keys)
+                {
+                    if (!seenIds.Contains(id)) staleIds.Add(id);
+                }
+                for (int i = 0; i < staleIds.Count; i++)
+                {
+                    previousPositions.Remove(staleIds[i]);
+                    previousAgents.Remove(staleIds[i]);
                 }
 
                 if (!AreFinite(session))
@@ -157,18 +211,38 @@ namespace Fishing.V2.EditorTools
             }
 
             bool movementStable = maxVisibleStep <= 0.75f && visibleLargeJumps == 0;
+            bool hookPathObserved = strikeFrames > 0 && hookedFrames > 0;
+            bool afterBiteObserved = !exerciseAfterBite || afterBiteFrames > 0;
+            int tallyCount = 0;
+            foreach (int count in session.Caught.Values) tallyCount += count;
+            bool arrivalAccounting = session.CatchFlightArrivals == tallyCount;
+            bool respawnAccounting = session.SpawnedFishCount - initialFishCount == session.RespawnsSpawned &&
+                session.RespawnsSpawned <= session.RespawnsScheduled;
 
             Application.logMessageReceived -= OnLogMessage;
             Debug.Log("Fishing V2 v25 all-species simulation finished. errors=" + _errors +
                 ", fish=" + fishCount +
                 ", validationFish=" + hasValidationFish +
                 ", maxVisibleStep=" + maxVisibleStep.ToString("F4") +
+                " (" + maxStepInfo + ")" +
                 ", visibleLargeJumps=" + visibleLargeJumps +
+                ", strikeFrames=" + strikeFrames +
+                ", hookedFrames=" + hookedFrames +
+                ", afterBiteFrames=" + afterBiteFrames +
+                ", afterBiteTest=" + exerciseAfterBite +
+                ", arrivals=" + session.CatchFlightArrivals +
+                ", tally=" + tallyCount +
+                ", respawns=" + session.RespawnsSpawned + "/" + session.RespawnsScheduled +
+                ", spawned=" + session.SpawnedFishCount + "/initial=" + initialFishCount +
                 ", score=" + session.Score);
 
             if (!hasFish) Debug.LogError("Fishing V2 v25 simulation did not retain any active fish.");
             if (!hasValidationFish) Debug.LogError("Fishing V2 v25 simulation did not spawn a validation-only species.");
             if (!movementStable) Debug.LogError("Fishing V2 v25 simulation found a visible fish jump above 0.75 world units.");
+            if (!hookPathObserved) Debug.LogError("Fishing V2 v25 simulation did not observe both Strike and Hooked states.");
+            if (!afterBiteObserved) Debug.LogError("Fishing V2 v25 After-Bite simulation did not observe the release path.");
+            if (!arrivalAccounting) Debug.LogError("Fishing V2 v25 simulation catch tally did not match arrival callbacks.");
+            if (!respawnAccounting) Debug.LogError("Fishing V2 v25 simulation respawn accounting was not one-for-one.");
 
             Object.DestroyImmediate(sessionObject);
             Object.DestroyImmediate(spot);
@@ -189,7 +263,9 @@ namespace Fishing.V2.EditorTools
                 if (float.IsNaN(p.x) || float.IsNaN(p.y) || float.IsInfinity(p.x) || float.IsInfinity(p.y) ||
                     float.IsNaN(fish.HeadingRadians) || float.IsInfinity(fish.HeadingRadians) ||
                     float.IsNaN(fish.SpeedNow) || float.IsInfinity(fish.SpeedNow) ||
-                    float.IsNaN(fish.VisualDepth01) || float.IsInfinity(fish.VisualDepth01))
+                    float.IsNaN(fish.VisualDepth01) || float.IsInfinity(fish.VisualDepth01) ||
+                    float.IsNaN(fish.MouthPosition.x) || float.IsNaN(fish.MouthPosition.y) ||
+                    float.IsInfinity(fish.MouthPosition.x) || float.IsInfinity(fish.MouthPosition.y))
                 {
                     return false;
                 }
