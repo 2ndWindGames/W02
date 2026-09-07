@@ -14,3 +14,6 @@ TempCompile/
 
 # Reversible quarantine created while removing the accidental outer Unity project
 _recovery_accidental-root-unity_20260901/
+
+# Local Blender MCP runtime, cache, logs, and generated smoke-test artifacts
+.tools/

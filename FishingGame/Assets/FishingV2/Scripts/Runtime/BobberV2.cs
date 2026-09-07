@@ -31,6 +31,9 @@ namespace Fishing.V2
         private float _now;
         private Vector2 _castStartPosition;
         private float _visualScale = 0.23f;
+        // Presentation-only multiplier on the physical ripple. The bobber ring stays a
+        // gameplay indicator; this is the water effect, so only this one follows the profile.
+        private float _physicalRippleStrength = 1f;
 
         private const int CastPathPointCount = 18;
 
@@ -83,6 +86,32 @@ namespace Fishing.V2
             Position = pond.center;
             _castStartPosition = Position;
             Phase = BobberPhase.Idle;
+            UpdateVisual();
+        }
+
+        /// <summary>
+        /// 물 프로파일이 물리적 파문의 세기를 정한다. 금색 상호작용 링은 gameplay 지표라
+        /// 여기 영향을 받지 않는다.
+        /// </summary>
+        public void SetPhysicalRippleStrength(float strength)
+        {
+            _physicalRippleStrength = Mathf.Max(0f, strength);
+        }
+
+        /// <summary>
+        /// 새 세션을 위해 찌를 처음 상태로 되돌린다. 이걸 안 하면 세션을 다시 시작했을 때
+        /// 이전 찌가 물에 뜬 채로 "던질 자리를 고르는" 화면이 시작된다.
+        /// </summary>
+        public void ResetForNewSession()
+        {
+            ClearBite();
+            Phase = BobberPhase.Idle;
+            Position = _pond.center;
+            _pendingPosition = Position;
+            _castStartPosition = Position;
+            _phaseTimer = 0f;
+            _spamCount = 0;
+            _lastCastTime = -100f;
             UpdateVisual();
         }
 
@@ -223,6 +252,9 @@ namespace Fishing.V2
 
             if (_visual != null)
             {
+                // 첫 캐스팅 전에는 찌가 화면에 없어야 한다. Idle은 그 구간에만 나온다.
+                bool visible = Phase != BobberPhase.Idle;
+                if (_visual.gameObject.activeSelf != visible) _visual.gameObject.SetActive(visible);
                 float dip = HitFish != null ? 1f : 0f;
                 // The water is an opaque background at -Z; keep the bobber on the +Z-facing side.
                 Vector3 world = new Vector3(visualPosition.x, visualPosition.y, 0.46f - dip * 0.05f);
@@ -251,7 +283,13 @@ namespace Fishing.V2
                 _ripple.transform.position = new Vector3(Position.x, Position.y, 0.40f);
                 float pulse = 0.5f + 0.5f * Mathf.Sin(_now * 2.1f + 0.6f);
                 _ripple.transform.localScale = Vector3.one * (0.74f + pulse * 0.42f);
-                Color rippleColor = new Color(0.32f, 0.78f, 0.76f, 0.36f + pulse * 0.18f);
+                // 세기를 1 위로 올릴 때만 선이 굵어진다. 1.0에서는 기존 값 그대로다.
+                _ripple.widthMultiplier = 0.026f * Mathf.Lerp(1f, 1.55f, Mathf.Clamp01(_physicalRippleStrength - 1f));
+                Color rippleColor = new Color(
+                    0.32f,
+                    0.78f,
+                    0.76f,
+                    Mathf.Clamp01((0.36f + pulse * 0.18f) * _physicalRippleStrength));
                 _ripple.startColor = rippleColor;
                 _ripple.endColor = rippleColor;
             }

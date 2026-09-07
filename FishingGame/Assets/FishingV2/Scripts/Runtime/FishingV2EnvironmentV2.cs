@@ -65,6 +65,32 @@ namespace Fishing.V2
             CreateGrassClump(root.transform, material, new Vector2(pond.center.x - 3.10f, pond.yMin + 0.24f), 0.68f, 0.16f, plantColor, visualStrength * 0.90f);
             CreateGrassClump(root.transform, material, new Vector2(pond.center.x + 1.90f, pond.yMin + 0.18f), 0.54f, -0.12f, plantColor, visualStrength * 0.78f);
 
+            // 연못 바깥 장식. 연출에서 카메라가 뒤로 빠지면 게임플레이 사각형 너머까지
+            // 보이는데, 거기가 비어 있으면 물이 아니라 "맵이 끝난 자리"로 읽힌다.
+            // 게임플레이에는 안 보이는 영역이고 콜라이더도 없으므로 순수 장식이다.
+            RockSpec[] outerRocks =
+            {
+                new RockSpec(new Vector2(pond.xMin - 2.10f, pond.yMax + 0.85f), new Vector2(1.60f, 0.46f), 0.22f, 27.3f, 0.26f),
+                new RockSpec(new Vector2(pond.xMax + 2.45f, pond.yMax + 0.55f), new Vector2(1.32f, 0.38f), -0.31f, 31.8f, 0.22f),
+                new RockSpec(new Vector2(pond.xMin - 3.30f, pond.yMin - 0.70f), new Vector2(1.85f, 0.52f), -0.14f, 36.1f, 0.24f),
+                new RockSpec(new Vector2(pond.xMax + 3.05f, pond.yMin - 0.95f), new Vector2(1.55f, 0.44f), 0.27f, 41.6f, 0.20f),
+                new RockSpec(new Vector2(pond.center.x - 4.60f, pond.yMax + 1.35f), new Vector2(1.10f, 0.32f), 0.08f, 45.2f, 0.18f),
+                new RockSpec(new Vector2(pond.center.x + 3.90f, pond.yMin - 1.55f), new Vector2(1.24f, 0.36f), -0.19f, 49.7f, 0.19f),
+                new RockSpec(new Vector2(pond.xMin - 4.80f, pond.center.y + 0.40f), new Vector2(1.42f, 0.40f), 0.33f, 53.4f, 0.16f),
+                new RockSpec(new Vector2(pond.xMax + 4.55f, pond.center.y - 0.65f), new Vector2(1.36f, 0.39f), -0.24f, 58.9f, 0.17f)
+            };
+
+            for (int i = 0; i < outerRocks.Length; i++)
+            {
+                // 바깥은 더 멀고 탁하다. 안쪽과 같은 세기로 그리면 연못 경계가 사라진다.
+                CreateRock(root.transform, material, outerRocks[i], rockColor, rockHighlight, visualStrength * 0.72f);
+            }
+
+            CreateGrassClump(root.transform, material, new Vector2(pond.xMin - 1.55f, pond.yMin - 0.35f), 0.80f, 0.22f, plantColor, visualStrength * 0.62f);
+            CreateGrassClump(root.transform, material, new Vector2(pond.xMax + 1.70f, pond.yMax + 0.25f), 0.74f, -0.18f, plantColor, visualStrength * 0.58f);
+            CreateGrassClump(root.transform, material, new Vector2(pond.center.x - 5.90f, pond.yMin - 1.10f), 0.66f, 0.30f, plantColor, visualStrength * 0.55f);
+            CreateGrassClump(root.transform, material, new Vector2(pond.center.x + 5.40f, pond.yMax + 1.05f), 0.70f, -0.26f, plantColor, visualStrength * 0.52f);
+
             return root.transform;
         }
 

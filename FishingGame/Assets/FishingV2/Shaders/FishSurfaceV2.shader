@@ -33,6 +33,13 @@ Shader "FishingV2/FishSurface"
         _OpticalDistortionScale ("Water Optical Scale", Range(0.25, 2.5)) = 1.08
         _OpticalDistortionSpeed ("Water Optical Speed", Range(0, 1)) = 0.18
         _OpticalDistortionStrength ("Water Optical Strength", Range(0, 1)) = 0.42
+        // Same shared surface field as WaterSurfaceV2. Passing the presentation shape here
+        // keeps the fish light response on the same crests as the visible surface above them.
+        _SurfaceShapeStrength ("Water Surface Shape", Range(0, 2)) = 0
+        _WaterLightInfluence ("Water Light Influence", Range(0, 4)) = 1
+        _SurfacePhase ("Water Surface Phase", Float) = 0
+        // 랩 경계 근처에서 물고기를 지운다. 랩은 설계상 필요하지만 순간이동은 보이면 안 된다.
+        _EdgeFade ("Wrap Edge Fade", Range(0, 1)) = 1
         _PondCenter ("Pond Center", Vector) = (0, 0, 0, 0)
         _PondSize ("Pond Size", Vector) = (16, 9, 0, 0)
         _LightDirection ("Light Direction", Vector) = (-0.36, 0.58, 0.73, 0)
@@ -108,6 +115,10 @@ Shader "FishingV2/FishSurface"
                 float _OpticalDistortionScale;
                 float _OpticalDistortionSpeed;
                 float _OpticalDistortionStrength;
+                float _SurfaceShapeStrength;
+                float _WaterLightInfluence;
+                float _SurfacePhase;
+                float _EdgeFade;
                 float4 _PondCenter;
                 float4 _PondSize;
                 float4 _LightDirection;
@@ -185,9 +196,9 @@ Shader "FishingV2/FishSurface"
                 float2 waterUV = (positionInputs.positionWS.xy - _PondCenter.xy) / pondSize + 0.5;
                 output.waterLight = WaterOpticsLight(
                     saturate(waterUV),
-                    _OpticalTime,
+                    _SurfacePhase,
                     _OpticalDistortionScale,
-                    _OpticalDistortionSpeed);
+                    _SurfaceShapeStrength);
                 return output;
             }
 
@@ -223,8 +234,23 @@ Shader "FishingV2/FishSurface"
                 // Shallow fish catch a small amount of the same surface-light field as the
                 // floor. This is a value modulation only; the fish transform is untouched.
                 half shallowWeight = 1.0h - depth;
-                half fishLightModulation = (input.waterLight - 0.5h) * 2.0h * 0.060h * shallowWeight;
+                half fishLightModulation = (input.waterLight - 0.5h) * 2.0h * 0.060h * (half)_WaterLightInfluence * shallowWeight;
                 color *= 1.0h + fishLightModulation;
+
+                // 스크린 도어 페이드. 알파 블렌딩으로 바꾸면 물고기끼리 정렬 문제가 생기는데,
+                // 이 페이드는 화면 맨 끝에서 1초 남짓 일어나므로 디더가 눈에 띄지 않는다.
+                if (_EdgeFade < 0.996)
+                {
+                    const float bayer[16] =
+                    {
+                        0.0625, 0.5625, 0.1875, 0.6875,
+                        0.8125, 0.3125, 0.9375, 0.4375,
+                        0.2500, 0.7500, 0.1250, 0.6250,
+                        1.0000, 0.5000, 0.8750, 0.3750
+                    };
+                    int2 pixel = int2(fmod(input.positionHCS.xy, 4.0));
+                    clip(_EdgeFade - bayer[pixel.y * 4 + pixel.x]);
+                }
 
                 half rim = 1.0h - abs(normal.z);
                 color = lerp(color, color * 0.34h, smoothstep(0.70h, 1.0h, rim) * _RimStrength);
